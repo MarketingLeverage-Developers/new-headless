@@ -1,0 +1,24 @@
+.Content {
+    // position: fixed;
+    // background: #fff;
+    // border: 1px solid rgba(0, 0, 0, 0.08);
+    // border-radius: 8px;
+    // box-shadow: 0 10px 30px rgba(0, 0, 0, 0.14);
+    // outline: none;
+    // min-width: 120px;
+    // pointer-events: auto;
+    transform-origin: top left;
+    transition: opacity 0.12s ease, transform 0.12s ease;
+    box-shadow: 0 2px 15px 0 rgba(0, 0, 0, 0.08);
+    // z-index: 1000;
+    // overflow: hidden;
+}
+.Open {
+    opacity: 1;
+    transform: scale(1);
+}
+.Closed {
+    opacity: 0;
+    transform: scale(0.98);
+    pointer-events: none;
+}

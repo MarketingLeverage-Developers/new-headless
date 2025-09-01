@@ -1,0 +1,16 @@
+.Content {
+    // display: flex;
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 1000;
+    &.Closed {
+        opacity: 0;
+        pointer-events: none; /* 클릭 방지 */
+    }
+
+    &.Open {
+        opacity: 1;
+    }
+}

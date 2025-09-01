@@ -1,0 +1,188 @@
+/* 컨테이너 포지션 */
+.container {
+    position: fixed;
+    z-index: 1000;
+    pointer-events: none;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    align-items: center;
+}
+
+.top-left {
+    top: 16px;
+    left: 16px;
+    align-items: flex-start;
+}
+.top-right {
+    top: 16px;
+    right: 16px;
+    align-items: flex-end;
+}
+.top-center {
+    top: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+}
+.bottom-left {
+    bottom: 16px;
+    left: 16px;
+    align-items: flex-start;
+}
+.bottom-right {
+    bottom: 16px;
+    right: 16px;
+    align-items: flex-end;
+}
+.bottom-center {
+    bottom: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+/* 알약 + 흰 카드 */
+.pill {
+    border-radius: 8px;
+}
+
+.toast {
+    pointer-events: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    min-height: 34px;
+    background: #ffffff;
+    color: #111827;
+    border: 1px solid rgba(16, 24, 40, 0.08);
+    box-shadow: 0 2px 0 rgba(0, 0, 0, 0.02), 0 6px 14px rgba(0, 0, 0, 0.1), 0 12px 26px rgba(0, 0, 0, 0.08);
+    font-size: 14px;
+    line-height: 1.2;
+    white-space: nowrap;
+    max-width: 92vw;
+    position: relative;
+
+    /* ✨ 초기값을 살짝 아래(또는 위) + 투명으로 두어 '훅' 튀는 느낌 제거 */
+    opacity: 0;
+    transform: translateY(4px) scale(0.995);
+    will-change: opacity, transform, box-shadow;
+    backface-visibility: hidden;
+}
+
+/* 이모지/텍스트/닫기 */
+.icon {
+    font-size: 18px;
+    line-height: 1;
+    display: inline-flex;
+}
+.text {
+    font-weight: 500;
+}
+.close {
+    appearance: none;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font-size: 16px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 2px 4px;
+    border-radius: 6px;
+    transition: transform 120ms ease;
+}
+.close:hover {
+    transform: scale(1.08);
+}
+.close:active {
+    transform: scale(0.98);
+}
+
+/* 키프레임: 등장(부드럽게), 퇴장(기존 유지) */
+@keyframes fadeInUpSoft {
+    from {
+        opacity: 0;
+        transform: translateY(6px) scale(0.995);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+@keyframes fadeInDownSoft {
+    from {
+        opacity: 0;
+        transform: translateY(-6px) scale(0.995);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+@keyframes fadeOutUp {
+    from {
+        opacity: 1;
+        transform: translateY(0);
+    }
+    to {
+        opacity: 0;
+        transform: translateY(-8px);
+    }
+}
+@keyframes fadeOutDown {
+    from {
+        opacity: 1;
+        transform: translateY(0);
+    }
+    to {
+        opacity: 0;
+        transform: translateY(8px);
+    }
+}
+
+/* 상태 전환
+   - 등장: overshoot(살짝 커졌다 줄어드는 효과) 제거 → 자연스럽게 정지
+   - timing: 더 느긋한 커브로 '스르륵' */
+.enteringTop {
+    animation: fadeInDownSoft 260ms cubic-bezier(0.2, 0.65, 0.3, 1) both;
+}
+.enteringBottom {
+    animation: fadeInUpSoft 260ms cubic-bezier(0.2, 0.65, 0.3, 1) both;
+}
+.visible {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+}
+.leavingTop {
+    animation: fadeOutUp 140ms ease-in both;
+}
+.leavingBottom {
+    animation: fadeOutDown 140ms ease-in both;
+}
+
+/* 여러 개가 한 번에 뜰 때: 아주 약한 지연만 (튀지 않도록 12ms 간격) */
+.container > .toast:nth-child(1) {
+    animation-delay: 0ms;
+}
+.container > .toast:nth-child(2) {
+    animation-delay: 12ms;
+}
+.container > .toast:nth-child(3) {
+    animation-delay: 24ms;
+}
+.container > .toast:nth-child(4) {
+    animation-delay: 36ms;
+}
+.container > .toast:nth-child(5) {
+    animation-delay: 48ms;
+}
+
+/* 모션 감소: 애니메이션 비활성화 */
+@media (prefers-reduced-motion: reduce) {
+    .enteringTop,
+    .enteringBottom,
+    .leavingTop,
+    .leavingBottom {
+        animation: none !important;
+    }
+}

@@ -1,0 +1,38 @@
+.Root {
+}
+
+.Input {
+    display: none;
+}
+
+/* 화면 전체 드래그 수신 오버레이 */
+.EventsCatcher {
+    position: fixed;
+    inset: 0;
+    pointer-events: none; /* 기본 비활성 */
+    z-index: 9999; /* 필요시 조정 */
+}
+
+/* 드래그 중에만 이벤트 활성화 */
+.EventsCatcher[data-dragging='true'] {
+    pointer-events: auto;
+}
+
+.Dropzone {
+}
+.FileList {
+}
+.FileItem {
+}
+.FileName {
+}
+.RemoveButton {
+}
+.ImageList {
+}
+.ImageItem {
+}
+.Preview {
+}
+.Controls {
+}
