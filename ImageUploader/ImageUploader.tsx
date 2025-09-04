@@ -1,4 +1,8 @@
-// 목적: Headless ImageUploader (Select 컨트롤드/언컨트롤드 패턴)
+// shared/headless/ImageUploader/ImageUploader.tsx
+// 목적: Headless ImageUploader (컨트롤드/언컨트롤드) + 파일 업로드 훅(onResolveFiles) 추가
+// - onResolveFiles(files): Promise<ImageItemInput[]> 를 구현하면
+//   사용자가 고른 File들을 API 업로드 후 응답을 UI 아이템으로 치환할 수 있음.
+
 import React, { createContext, useContext, useMemo, useRef, useState, useEffect } from 'react';
 import classNames from 'classnames';
 import styles from './ImageUploader.module.scss';
@@ -8,7 +12,7 @@ export type ImageItem = {
     id: string;
     url: string;
     name?: string;
-    owned?: boolean;
+    owned?: boolean; // true: createObjectURL로 만든 로컬 리소스(해제 대상), false: 서버 리소스
 };
 
 export type ImageItemInput = {
@@ -22,7 +26,7 @@ type ImageUploaderContextType = {
     imageUploaderValue: ImageItem[];
     changeImageUploaderValue: (next: ImageItem[]) => void;
     isActive: (id: string) => boolean;
-    addFiles: (files: File[] | FileList) => void;
+    addFiles: (files: File[] | FileList) => Promise<void>;
     removeById: (id: string) => void;
     clear: () => void;
     openFileDialog: () => void;
@@ -38,7 +42,7 @@ const ImageUploaderContext = createContext<ImageUploaderContextType>({
     imageUploaderValue: [],
     changeImageUploaderValue: () => {},
     isActive: () => false,
-    addFiles: () => {},
+    addFiles: async () => {},
     removeById: () => {},
     clear: () => {},
     openFileDialog: () => {},
@@ -49,14 +53,21 @@ const ImageUploaderContext = createContext<ImageUploaderContextType>({
 
 export type ImageUploaderProps = {
     children: React.ReactNode;
-    defaultValue?: ImageItemInput[];
+    defaultValue?: ImageItem[];
     value?: ImageItemInput[];
     onChange?: (next: ImageItem[]) => void;
     accept?: string;
     multiple?: boolean;
     maxFiles?: number;
     maxSize?: number;
-} & React.HTMLAttributes<HTMLDivElement>;
+
+    /**
+     * 사용자가 고른 File[]을 API 업로드 등으로 변환해 ImageItemInput[]을 돌려주는 훅
+     * - 반환 아이템의 owned는 보통 false (서버 리소스)
+     * - 미구현 시, 기본 동작: createObjectURL로 미리보기(owned: true)
+     */
+    onResolveFiles?: (files: File[]) => Promise<ImageItemInput[]>;
+} & Omit<React.HTMLAttributes<HTMLDivElement>, 'onChange'>;
 
 type ImageUploaderComponent = React.FC<ImageUploaderProps> & {
     Dropzone: typeof Dropzone;
@@ -89,6 +100,7 @@ const ImageUploader = (({
     multiple = true,
     maxFiles,
     maxSize,
+    onResolveFiles,
     className,
     ...props
 }: ImageUploaderProps) => {
@@ -108,7 +120,7 @@ const ImageUploader = (({
                 try {
                     URL.revokeObjectURL(url);
                 } catch {
-                    return;
+                    /* noop */
                 }
             }
         });
@@ -123,20 +135,33 @@ const ImageUploader = (({
 
     const isActive = (id: string) => currentValue.some((i) => i.id === id);
 
-    const addFiles = (filesLike: File[] | FileList) => {
+    /** 파일 추가(드롭/선택/붙여넣기 공통 진입점) */
+    const addFiles = async (filesLike: File[] | FileList) => {
         const arr = Array.from<File>(filesLike);
         const valid = arr.filter((f) => {
             if (!f.type.startsWith('image/')) return false;
             if (maxSize && f.size > maxSize) return false;
             return true;
         });
+        if (valid.length === 0) return;
 
-        const added: ImageItem[] = valid.map((f) => {
-            const url = URL.createObjectURL(f);
-            return { id: url, url, name: f.name, owned: true };
-        });
+        let incoming: ImageItem[] = [];
+        if (onResolveFiles) {
+            // 1) 사용자 정의: API 업로드 → 응답을 ImageItemInput[]으로 치환
+            const resolved = await onResolveFiles(valid);
+            incoming = normalize(resolved ?? []);
+            // 서버 리소스는 일반적으로 owned: false 여야 revoke 대상에서 제외됨.
+            incoming = incoming.map((i) => ({ ...i, owned: i.owned ?? false }));
+        } else {
+            // 2) 기본: 로컬 미리보기 URL 생성
+            const added: ImageItem[] = valid.map((f) => {
+                const url = URL.createObjectURL(f);
+                return { id: url, url, name: f.name, owned: true };
+            });
+            incoming = added;
+        }
 
-        const merged = multiple ? [...currentValue, ...added] : added.slice(0, 1);
+        const merged = multiple ? [...currentValue, ...incoming] : incoming.slice(0, 1);
 
         const seen = new Set<string>();
         const deduped: ImageItem[] = [];
@@ -158,7 +183,7 @@ const ImageUploader = (({
             try {
                 URL.revokeObjectURL(target.url);
             } catch {
-                return;
+                /* noop */
             }
             ownedPrevRef.current.delete(target.url);
         }
@@ -171,7 +196,7 @@ const ImageUploader = (({
                 try {
                     URL.revokeObjectURL(i.url);
                 } catch {
-                    return;
+                    /* noop */
                 }
             }
         });
@@ -182,7 +207,7 @@ const ImageUploader = (({
     const inputRef = useRef<HTMLInputElement | null>(null);
     const openFileDialog = () => inputRef.current?.click();
 
-    // dragover heartbeat (window + overlay 둘 다에서 하트비트 유지)
+    // dragover heartbeat
     const [dragging, setDragging] = useState(false);
     const draggingRef = useRef(false);
     const hbTimerRef = useRef<number | null>(null);
@@ -229,20 +254,20 @@ const ImageUploader = (({
         keepAlive();
     };
 
-    const onOverlayDrop = (e: React.DragEvent) => {
+    const onOverlayDrop = async (e: React.DragEvent) => {
         e.preventDefault();
         e.stopPropagation();
         const files = e.dataTransfer?.files;
-        if (files?.length) addFiles(files);
+        if (files?.length) await addFiles(files);
         if (hbTimerRef.current) window.clearTimeout(hbTimerRef.current);
         draggingRef.current = false;
         setDragging(false);
         e.dataTransfer?.clearData();
     };
 
-    const onPaste = (e: React.ClipboardEvent) => {
+    const onPaste = async (e: React.ClipboardEvent) => {
         const pasted = Array.from(e.clipboardData.files || []).filter((f) => f.type.startsWith('image/'));
-        if (pasted.length) addFiles(pasted);
+        if (pasted.length) await addFiles(pasted);
     };
 
     const ctx = useMemo<ImageUploaderContextType>(
@@ -265,15 +290,15 @@ const ImageUploader = (({
 
     return (
         <ImageUploaderContext.Provider value={ctx}>
-            <div {...props} className={classNames(styles.Root)} onPaste={onPaste}>
+            <div {...props} className={classNames(styles.Root, className)} onPaste={onPaste}>
                 <input
                     ref={inputRef}
                     className={styles.Input}
                     type="file"
                     accept={accept}
                     multiple={multiple}
-                    onChange={(e) => {
-                        if (e.currentTarget.files) addFiles(e.currentTarget.files);
+                    onChange={async (e) => {
+                        if (e.currentTarget.files) await addFiles(e.currentTarget.files);
                         e.currentTarget.value = '';
                     }}
                     tabIndex={-1}
