@@ -298,8 +298,13 @@ const ImageUploader = (({
                     accept={accept}
                     multiple={multiple}
                     onChange={async (e) => {
-                        if (e.currentTarget.files) await addFiles(e.currentTarget.files);
-                        e.currentTarget.value = '';
+                        const el = e.currentTarget; // 🔴 e.currentTarget 캡쳐
+                        const files = el.files;
+                        try {
+                            if (files) await addFiles(files); // 업로드/정규화 수행
+                        } finally {
+                            if (el) el.value = ''; // 🔒 el로 안전하게 초기화
+                        }
                     }}
                     tabIndex={-1}
                 />
