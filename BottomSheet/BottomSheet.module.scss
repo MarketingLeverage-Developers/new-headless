@@ -1,0 +1,70 @@
+.Overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.35);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 180ms ease;
+    z-index: 1000;
+}
+
+.Overlay.open {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.Sheet {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+
+    /* iOS 안전 영역 고려 */
+    padding-bottom: max(16px, env(safe-area-inset-bottom));
+    background: #fff;
+    border-top-left-radius: 20px;
+    border-top-right-radius: 20px;
+    box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.08);
+
+    transform: translateY(100%);
+    transition: transform 240ms ease;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+
+    /* 최대 높이 보호 */
+    max-height: 70vh;
+}
+
+.Sheet.open {
+    transform: translateY(0);
+}
+
+.Handle {
+    width: 44px;
+    height: 4px;
+    border-radius: 999px;
+    background: #e5e5e5;
+    margin: 8px auto 6px;
+}
+
+.Header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 16px 0 16px;
+}
+
+.Content {
+    padding: 12px 16px 16px 16px;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    flex: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .Overlay,
+    .Sheet {
+        transition: none;
+    }
+}
