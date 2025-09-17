@@ -28,9 +28,9 @@
 
     transform: translateY(100%);
     transition: transform 240ms ease;
+    will-change: transform; /* 드래그 성능 개선 */
     display: flex;
     flex-direction: column;
-    gap: 24px;
 
     /* 최대 높이 보호 */
     max-height: 70vh;
@@ -40,12 +40,40 @@
     transform: translateY(0);
 }
 
+/* 드래그 중에는 트랜지션 제거 (JS에서 .dragging 토글) */
+.Sheet.dragging {
+    transition: none;
+}
+
 .Handle {
     width: 44px;
     height: 4px;
     border-radius: 999px;
     background: #e5e5e5;
     margin: 8px auto 6px;
+
+    /* 드래그 제스처 UX */
+    cursor: grab;
+    touch-action: none; /* 스크롤 제스처와 충돌 방지 */
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    position: relative;
+
+    /* 히트존 확장: 잡기 쉬움 */
+    &::after {
+        content: '';
+        position: absolute;
+        left: 50%;
+        transform: translateX(-50%);
+        top: -10px;
+        bottom: -10px;
+        width: 120px;
+    }
+}
+
+.Handle:active {
+    cursor: grabbing;
 }
 
 .Header {
@@ -56,9 +84,10 @@
 }
 
 .Content {
-    padding: 12px 16px 16px 16px;
+    padding: 24px 16px 16px 16px;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain; /* 상위로 스크롤 전파 최소화 */
     flex: 1;
 }
 
