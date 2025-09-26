@@ -4,7 +4,11 @@ import BaseButton from '@/shared/primitives/BaseButton/BaseButton';
 import { getThemeColor } from '@/shared/utils/css/getThemeColor';
 import { IoMdOptions } from 'react-icons/io';
 
-export const Trigger = () => {
+type TriggerProps = {
+    children?: React.ReactNode;
+};
+
+export const Trigger = ({ children }: TriggerProps) => {
     const { setOpen } = useBottomSheetCtx();
 
     return (
@@ -15,7 +19,7 @@ export const Trigger = () => {
             onClick={() => setOpen(true)}
             radius={6}
         >
-            <IoMdOptions color={getThemeColor('Gray1')} />
+            {children ? children : <IoMdOptions color={getThemeColor('Gray1')} />}
         </BaseButton>
     );
 };
