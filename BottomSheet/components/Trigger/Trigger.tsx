@@ -6,17 +6,23 @@ import { IoMdOptions } from 'react-icons/io';
 
 type TriggerProps = {
     children?: React.ReactNode;
+    onClick?: () => void;
 };
 
-export const Trigger = ({ children }: TriggerProps) => {
+export const Trigger = ({ children, onClick }: TriggerProps) => {
     const { setOpen } = useBottomSheetCtx();
+
+    const triggerHandler = () => {
+        setOpen(true);
+        if (onClick) onClick();
+    };
 
     return (
         <BaseButton
             width={'fit-content'}
             bgColor={getThemeColor('Gray6')}
             padding={{ x: 12, y: 9 }}
-            onClick={() => setOpen(true)}
+            onClick={triggerHandler}
             radius={6}
         >
             {children ? children : <IoMdOptions color={getThemeColor('Gray1')} />}
