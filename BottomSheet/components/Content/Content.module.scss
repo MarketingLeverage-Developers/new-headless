@@ -77,10 +77,10 @@
 }
 
 .Header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 8px 16px 0 16px;
+    padding: 16px;
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--Black1);
 }
 
 .Content {
@@ -96,4 +96,15 @@
     .Sheet {
         transition: none;
     }
+}
+
+.Footer {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    z-index: 1002;
+    width: 100%;
+    background-color: var(--White1);
+    padding: var(--padding, 16px);
+    height: auto;
 }
