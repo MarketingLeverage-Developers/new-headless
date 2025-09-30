@@ -20,6 +20,7 @@ type ModalProps = {
     value?: boolean; // 컨트롤드 값 (주어지면 컨트롤드)
     onChange?: (open: boolean) => void; // 상태 변경 알림(양쪽 공용)
     lockBodyScroll?: boolean; // 모달 열릴 때 body 스크롤 잠금 (기본 true)
+    closeOnEsc?: boolean; // ESC로 닫기 (기본 true)
 };
 
 // 단일 컴포넌트(베이스 분리 X)
@@ -30,7 +31,14 @@ type ModalComponent = React.FC<ModalProps> & {
     Content: typeof Content;
 };
 
-const Modal = (({ children, defaultValue = false, value, onChange, lockBodyScroll = true }: ModalProps) => {
+const Modal = (({
+    children,
+    defaultValue = false,
+    value,
+    onChange,
+    lockBodyScroll = true,
+    closeOnEsc = true,
+}: ModalProps) => {
     // 언컨트롤드 내부 상태
     const [internalValue, setInternalValue] = useState<boolean>(defaultValue);
 
@@ -43,10 +51,8 @@ const Modal = (({ children, defaultValue = false, value, onChange, lockBodyScrol
     // 상태 변경 함수 (심플: 메모화 X)
     const setOpen = (next: boolean) => {
         if (isControlled) {
-            // 컨트롤드 → 외부 onChange만 호출
             onChange?.(next);
         } else {
-            // 언컨트롤드 → 내부 상태 변경 + 필요 시 onChange 호출
             setInternalValue(next);
             onChange?.(next);
         }
@@ -67,6 +73,24 @@ const Modal = (({ children, defaultValue = false, value, onChange, lockBodyScrol
             body.style.overflow = prevOverflow || '';
         };
     }, [currentOpen, lockBodyScroll]);
+
+    // ✅ ESC 키로 닫기
+    useEffect(() => {
+        if (!closeOnEsc) return;
+        if (!currentOpen) return;
+        if (typeof window === 'undefined') return; // SSR 안전
+
+        const onKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape' || e.code === 'Escape') {
+                setOpen(false);
+            }
+        };
+
+        window.addEventListener('keydown', onKeyDown);
+        return () => {
+            window.removeEventListener('keydown', onKeyDown);
+        };
+    }, [currentOpen, closeOnEsc]);
 
     return (
         <ModalContext.Provider
