@@ -1,6 +1,7 @@
 import { useBottomSheetCtx } from '../../BottomSheet';
 import React, { useEffect, useRef, useState } from 'react';
 import styles from './Content.module.scss';
+import Portal from '@/shared/headless/Portal/Portal';
 
 type ContentProps = {
     children: React.ReactNode;
@@ -103,37 +104,39 @@ export const Content = ({ children, closeOnBackdrop = true, height = '65vh' }: C
     }, [dragging, dragY]);
 
     return (
-        <div
-            className={`${styles.Overlay} ${open ? styles.open : ''}`}
-            aria-hidden={!open}
-            onMouseDown={handleBackdropClick}
-        >
+        <Portal>
             <div
-                className={`${styles.Sheet} ${open ? styles.open : ''} ${dragging ? styles.dragging : ''}`}
-                role="dialog"
-                aria-modal="true"
-                aria-labelledby="filter-sheet-title"
-                ref={sheetRef}
-                style={{
-                    height,
-                    // 열려 있을 때만 드래그 변환 적용 (닫힘 애니메이션은 기존 CSS에 맡김)
-                    transform: open ? `translateY(${dragY}px)` : undefined,
-                }}
+                className={`${styles.Overlay} ${open ? styles.open : ''}`}
+                aria-hidden={!open}
+                onMouseDown={handleBackdropClick}
             >
-                {/* 핸들 (상단 작은 바) */}
                 <div
-                    ref={handleRef}
-                    className={styles.Handle}
-                    aria-hidden
-                    onPointerDown={onPointerDown}
-                    onPointerMove={onPointerMove}
-                    onPointerUp={onPointerUpOrCancel}
-                    onPointerCancel={onPointerUpOrCancel}
-                />
+                    className={`${styles.Sheet} ${open ? styles.open : ''} ${dragging ? styles.dragging : ''}`}
+                    role="dialog"
+                    aria-modal="true"
+                    aria-labelledby="filter-sheet-title"
+                    ref={sheetRef}
+                    style={{
+                        height,
+                        // 열려 있을 때만 드래그 변환 적용 (닫힘 애니메이션은 기존 CSS에 맡김)
+                        transform: open ? `translateY(${dragY}px)` : undefined,
+                    }}
+                >
+                    {/* 핸들 (상단 작은 바) */}
+                    <div
+                        ref={handleRef}
+                        className={styles.Handle}
+                        aria-hidden
+                        onPointerDown={onPointerDown}
+                        onPointerMove={onPointerMove}
+                        onPointerUp={onPointerUpOrCancel}
+                        onPointerCancel={onPointerUpOrCancel}
+                    />
 
-                {/* 내용 */}
-                <div className={styles.Content}>{children}</div>
+                    {/* 내용 */}
+                    <div className={styles.Content}>{children}</div>
+                </div>
             </div>
-        </div>
+        </Portal>
     );
 };
