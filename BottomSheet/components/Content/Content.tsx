@@ -7,9 +7,10 @@ type ContentProps = {
     children: React.ReactNode;
     closeOnBackdrop?: boolean;
     height?: number | string;
+    title?: string;
 };
 
-export const Content = ({ children, closeOnBackdrop = true, height = '65vh' }: ContentProps) => {
+export const Content = ({ children, closeOnBackdrop = true, height = '65vh', title = '' }: ContentProps) => {
     const { open, setOpen } = useBottomSheetCtx();
     const sheetRef = useRef<HTMLDivElement>(null);
     const handleRef = useRef<HTMLDivElement>(null);
@@ -132,6 +133,7 @@ export const Content = ({ children, closeOnBackdrop = true, height = '65vh' }: C
                         onPointerUp={onPointerUpOrCancel}
                         onPointerCancel={onPointerUpOrCancel}
                     />
+                    <div className={styles.Header}>{title}</div>
 
                     {/* 내용 */}
                     <div className={styles.Content}>{children}</div>

@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useMemo, useState, useId, useCallback } from 'react';
 import { Content, Trigger } from './components';
+import Footer from './components/Footer/Footer';
 
 type SetOpen = (next: boolean | ((prev: boolean) => boolean)) => void;
 
@@ -54,3 +55,4 @@ export default BottomSheet;
 
 BottomSheet.Trigger = Trigger;
 BottomSheet.Content = Content;
+BottomSheet.Footer = Footer;
