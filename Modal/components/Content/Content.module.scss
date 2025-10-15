@@ -7,6 +7,12 @@
     width: var(--width);
     height: var(--height);
     z-index: 1000;
+
+    overflow: hidden;
+    max-height: var(--maxHeight);
+    display: flex;
+    flex-direction: column;
+
     &.Closed {
         opacity: 0;
         pointer-events: none; /* 클릭 방지 */

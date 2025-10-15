@@ -8,9 +8,17 @@ type ContentProps = React.HTMLAttributes<HTMLDivElement> & {
     children: React.ReactNode;
     width?: string | number;
     height?: string | number;
+    maxHeight?: string | number;
 };
 
-export const Content = ({ width = 'auto', height = 'auto', children, style, ...props }: ContentProps) => {
+export const Content = ({
+    width = 'auto',
+    height = 'auto',
+    maxHeight = '80%',
+    children,
+    style,
+    ...props
+}: ContentProps) => {
     const { modalValue } = useModal();
 
     const containerRef = useRef<HTMLDivElement>(null);
@@ -23,6 +31,7 @@ export const Content = ({ width = 'auto', height = 'auto', children, style, ...p
     const cssVariables: CSSVariables = {
         '--width': toCssUnit(width),
         '--height': toCssUnit(height),
+        '--maxHeight': toCssUnit(maxHeight),
     };
 
     return (
