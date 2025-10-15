@@ -14,7 +14,7 @@ type ContentProps = React.HTMLAttributes<HTMLDivElement> & {
 export const Content = ({
     width = 'auto',
     height = 'auto',
-    maxHeight = '80%',
+    maxHeight = '100%',
     children,
     style,
     ...props
