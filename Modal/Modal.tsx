@@ -21,6 +21,7 @@ type ModalProps = {
     onChange?: (open: boolean) => void; // 상태 변경 알림(양쪽 공용)
     lockBodyScroll?: boolean; // 모달 열릴 때 body 스크롤 잠금 (기본 true)
     closeOnEsc?: boolean; // ESC로 닫기 (기본 true)
+    enterAction?: () => void;
 };
 
 // 단일 컴포넌트(베이스 분리 X)
@@ -31,6 +32,28 @@ type ModalComponent = React.FC<ModalProps> & {
     Content: typeof Content;
 };
 
+// --- 줄바꿈/멀티라인 감지 유틸 ---
+const isMultilineTarget = (el: HTMLElement | null) => {
+    if (!el) return false;
+    if (el.tagName === 'TEXTAREA') return true;
+    if (el.isContentEditable) return true;
+    // ARIA 멀티라인(커스텀 에디터들이 자주 씀)
+    const role = el.getAttribute('role');
+    const ariaMultiline = el.getAttribute('aria-multiline');
+    if (role === 'textbox' && ariaMultiline === 'true') return true;
+    return false;
+};
+
+// IME/멀티라인/조합키 등으로 "줄바꿈 의도"인지 판단
+const isNewlineIntent = (e: KeyboardEvent) => {
+    // 일부 브라우저에서만 존재
+    if (e.isComposing) return true; // 조합 입력 중엔 보내지 않음
+    const target = e.target as HTMLElement | null;
+    if (isMultilineTarget(target)) return true; // textarea, contenteditable 등
+    if (e.shiftKey || e.altKey) return true; // Shift+Enter / Alt+Enter는 줄바꿈 패턴
+    return false;
+};
+
 const Modal = (({
     children,
     defaultValue = false,
@@ -38,6 +61,7 @@ const Modal = (({
     onChange,
     lockBodyScroll = true,
     closeOnEsc = true,
+    enterAction,
 }: ModalProps) => {
     // 언컨트롤드 내부 상태
     const [internalValue, setInternalValue] = useState<boolean>(defaultValue);
@@ -74,23 +98,35 @@ const Modal = (({
         };
     }, [currentOpen, lockBodyScroll]);
 
-    // ✅ ESC 키로 닫기
     useEffect(() => {
-        if (!closeOnEsc) return;
         if (!currentOpen) return;
         if (typeof window === 'undefined') return; // SSR 안전
 
         const onKeyDown = (e: KeyboardEvent) => {
-            if (e.key === 'Escape' || e.code === 'Escape') {
+            // ESC로 닫기
+            if (closeOnEsc && (e.key === 'Escape' || e.code === 'Escape')) {
                 setOpen(false);
+                return;
             }
+            // Enter 액션 (단일)
+            if (!enterAction) return;
+            const isEnter = e.key === 'Enter' || e.code === 'Enter' || e.code === 'NumpadEnter';
+            if (!isEnter) return;
+            if (isNewlineIntent(e)) return;
+
+            e.preventDefault();
+            e.stopPropagation();
+
+            // 사용자 정의 동작
+            enterAction();
+            setOpen(false);
         };
 
         window.addEventListener('keydown', onKeyDown);
         return () => {
             window.removeEventListener('keydown', onKeyDown);
         };
-    }, [currentOpen, closeOnEsc]);
+    }, [currentOpen, closeOnEsc, enterAction]);
 
     return (
         <ModalContext.Provider
