@@ -102,8 +102,16 @@ const toNumberPx = (w: number | string | undefined, fallback: number, containerW
 
 const measureParentWidth = (el: HTMLTableElement | null) => {
     if (!el || !el.parentElement) return 0;
-    const rect = el.parentElement.getBoundingClientRect();
-    return rect.width;
+    const parent = el.parentElement;
+
+    // clientWidth = content + padding (border/scrollbar 제외)
+    // => content-box 폭 = clientWidth - paddingLeft - paddingRight
+    const cs = getComputedStyle(parent);
+    const padL = parseFloat(cs.paddingLeft || '0');
+    const padR = parseFloat(cs.paddingRight || '0');
+
+    const contentBoxWidth = parent.clientWidth - padL - padR;
+    return Math.max(0, contentBoxWidth);
 };
 
 /* =========================
