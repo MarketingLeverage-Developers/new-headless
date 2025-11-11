@@ -2,9 +2,10 @@ import * as React from 'react';
 
 export type QuerySearchContextType<T> = {
     query: string;
-    setQuery: (q: string) => void;
+    setQuery: (q: string, options?: { isSync?: boolean }) => void;
     label: string;
     data: T[];
+    isSync: boolean;
 };
 
 const QueryContext = React.createContext<QuerySearchContextType<any> | null>(null);
@@ -16,9 +17,15 @@ export type QuerySearchProps<T> = React.PropsWithChildren<{
 }>;
 
 export const QuerySearch = <T,>({ children, label, data, defaultQuery = '' }: QuerySearchProps<T>) => {
-    const [query, setQuery] = React.useState(defaultQuery);
+    const [query, setQueryState] = React.useState(defaultQuery);
+    const [isSync, setIsSync] = React.useState(false);
 
-    const value = React.useMemo(() => ({ query, setQuery, label, data }), [query, label, data]);
+    const setQuery = React.useCallback((q: string, options?: { isSync?: boolean }) => {
+        setQueryState(q);
+        setIsSync(options?.isSync ?? false);
+    }, []);
+
+    const value = React.useMemo(() => ({ query, setQuery, label, data, isSync }), [query, label, data, isSync]);
 
     return <QueryContext.Provider value={value}>{children}</QueryContext.Provider>;
 };
