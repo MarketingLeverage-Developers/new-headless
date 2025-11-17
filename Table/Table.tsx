@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import React, { createContext, useContext, useMemo } from 'react';
 import {
     Body,
     BodyRows,
@@ -48,6 +48,7 @@ export type UseTableParams<T> = {
 };
 
 export type UseTableResult<T> = {
+    // 그룹 헤더용 데이터 구조
     groupColumnRow: {
         key: string;
         columns: {
@@ -56,6 +57,7 @@ export type UseTableResult<T> = {
             render: (key: string, data?: T[]) => React.ReactElement;
         }[];
     };
+    // 1단 헤더용 데이터 구조
     columnRow: {
         key: string;
         columns: {
@@ -64,6 +66,7 @@ export type UseTableResult<T> = {
             width: number; // px 확정
         }[];
     };
+    // 실제 바디 행 데이터 구조 (이제 hiddenCells 없음)
     rows: {
         key: string;
         item: T;
@@ -71,21 +74,16 @@ export type UseTableResult<T> = {
             key: string;
             render: (item: T, rowIndex: number) => React.ReactElement;
         }[];
-        hiddenCells: {
-            key: string;
-            label: React.ReactNode;
-            render: (item: T, rowIndex: number) => React.ReactElement;
-        }[];
     }[];
+    // <col> 스타일 계산용 헬퍼
     getColStyle: (colIndex: number) => React.CSSProperties;
-    hiddenKeys: string[];
-    hasHidden: boolean;
 };
 
 /* =========================
    Helpers
    ========================= */
 
+// width 설정값을 px 숫자로 변환하는 헬퍼
 const toNumberPx = (w: number | string | undefined, fallback: number, containerW: number) => {
     if (typeof w === 'number') return w;
     if (typeof w === 'string') {
@@ -100,12 +98,11 @@ const toNumberPx = (w: number | string | undefined, fallback: number, containerW
     return fallback;
 };
 
+// 부모 요소의 content-box width 계산
 const measureParentWidth = (el: HTMLTableElement | null) => {
     if (!el || !el.parentElement) return 0;
     const parent = el.parentElement;
 
-    // clientWidth = content + padding (border/scrollbar 제외)
-    // => content-box 폭 = clientWidth - paddingLeft - paddingRight
     const cs = getComputedStyle(parent);
     const padL = parseFloat(cs.paddingLeft || '0');
     const padR = parseFloat(cs.paddingRight || '0');
@@ -115,7 +112,8 @@ const measureParentWidth = (el: HTMLTableElement | null) => {
 };
 
 /* =========================
-   Hook: useTable (부모폭 기준 자동 컬럼 선택)
+   Hook: useTable
+   - 모든 컬럼을 그대로 렌더링 (더 이상 뷰포트에 따른 숨김 처리 없음)
    ========================= */
 
 export const useTable = <T,>({
@@ -125,6 +123,7 @@ export const useTable = <T,>({
     containerPaddingPx = 0,
     containerWidth,
 }: UseTableParams<T> & { containerWidth: number }): UseTableResult<T> => {
+    // children 포함 모든 leaf 컬럼을 1차원 배열로 평탄화
     const leafColumns = useMemo(
         () =>
             columns.flatMap((col) => {
@@ -137,52 +136,37 @@ export const useTable = <T,>({
         [columns]
     );
 
-    // 컨테이너 내 실제 사용가능 폭
+    // 컨테이너 내 실제 사용가능 폭 (px)
     const innerWidth = Math.max(0, containerWidth - containerPaddingPx);
 
-    // 각 leaf의 실제 px 폭 계산
+    // 각 leaf의 실제 px 폭 계산 (px / % 모두 지원)
     const leafWidthsPx = useMemo(
         () => leafColumns.map((c) => toNumberPx(c.width, defaultColWidth, innerWidth)),
         [leafColumns, defaultColWidth, innerWidth]
     );
 
-    // 누적합으로 컨테이너에 들어갈 수 있는 컬럼 개수 선택
-    const visibleCount = useMemo(() => {
-        let sum = 0;
-        for (let i = 0; i < leafWidthsPx.length; i++) {
-            const next = sum + leafWidthsPx[i];
-            if (next > innerWidth) return i > 0 ? i : 1; // 최소 1개는 보이도록
-            sum = next;
-        }
-        return leafWidthsPx.length;
-    }, [leafWidthsPx, innerWidth]);
-
-    const visibleLeaf = leafColumns.slice(0, visibleCount);
-    const hiddenLeaf = leafColumns.slice(visibleCount);
-    const hiddenKeys = hiddenLeaf.map((c) => c.key);
-    const hasHidden = hiddenKeys.length > 0;
-
+    // 더 이상 컬럼을 자르지 않고 전체 leafColumns를 모두 사용
     const columnRow = useMemo(
         () => ({
             key: 'column',
-            columns: visibleLeaf.map((c, idx) => ({
+            columns: leafColumns.map((c, idx) => ({
                 key: c.key,
                 render: () => c.header(c.key, data),
                 width: Math.round(leafWidthsPx[idx] ?? defaultColWidth),
             })),
         }),
-        [visibleLeaf, leafWidthsPx, data, defaultColWidth]
+        [leafColumns, leafWidthsPx, data, defaultColWidth]
     );
 
-    // 그룹 헤더 colSpan 재계산(보이는 leaf만 포함)
+    // 그룹 헤더 colSpan 계산 (모든 leaf 기준)
     const groupColumnRow = useMemo(() => {
-        const visibleKeys = new Set(visibleLeaf.map((c) => c.key));
+        const leafKeys = new Set(leafColumns.map((c) => c.key));
         const calcSpan = (col: Column<T>) => {
             if (col.children && col.children.length > 0) {
-                const span = col.children.filter((ch) => visibleKeys.has(ch.key)).length;
+                const span = col.children.filter((ch) => leafKeys.has(ch.key)).length;
                 return span;
             }
-            return visibleKeys.has(col.key) ? 1 : 0;
+            return leafKeys.has(col.key) ? 1 : 0;
         };
         return {
             key: 'group-column',
@@ -194,32 +178,29 @@ export const useTable = <T,>({
                 }))
                 .filter((c) => c.colSpan > 0),
         };
-    }, [columns, data, visibleLeaf]);
+    }, [columns, data, leafColumns]);
 
+    // 각 행에 대해 visible leaf 컬럼만 셀로 구성 (hiddenCells 제거)
     const rows = useMemo(
         () =>
             data.map((item, rowIndex) => ({
                 key: `row-${rowIndex}`,
                 item,
-                cells: visibleLeaf.map((leaf) => ({
+                cells: leafColumns.map((leaf) => ({
                     key: leaf.key,
-                    render: (it: T, idx: number) => leaf.render(it, idx),
-                })),
-                hiddenCells: hiddenLeaf.map((leaf) => ({
-                    key: leaf.key,
-                    label: leaf.header(leaf.key, data),
                     render: (it: T, idx: number) => leaf.render(it, idx),
                 })),
             })),
-        [data, visibleLeaf, hiddenLeaf]
+        [data, leafColumns]
     );
 
+    // <col> 스타일 계산
     const getColStyle = (colIndex: number) => {
         const w = columnRow.columns[colIndex]?.width ?? defaultColWidth;
         return { width: `${w}px` };
     };
 
-    return { groupColumnRow, columnRow, rows, getColStyle, hiddenKeys, hasHidden };
+    return { groupColumnRow, columnRow, rows, getColStyle };
 };
 
 /* =========================
@@ -237,7 +218,8 @@ export const useTableContext = <T,>(): { state: UseTableResult<T>; data: T[] } =
 };
 
 /* =========================
-   RowDetails / Details 슬롯 / Toggle
+   TableInner
+   - 부모 width 측정 + useTable 호출 + Context 제공
    ========================= */
 
 const TableInner = <T,>({
@@ -247,33 +229,33 @@ const TableInner = <T,>({
     containerPaddingPx = 0,
     ...props
 }: UseTableParams<T> & React.HTMLAttributes<HTMLTableElement>) => {
-    const ref = useRef<HTMLTableElement | null>(null);
-    const [containerWidth, setContainerWidth] = useState<number>(0);
+    // const ref = useRef<HTMLTableElement | null>(null);
+    // const [containerWidth, setContainerWidth] = useState<number>(0);
 
-    useEffect(() => {
-        const el = ref.current;
-        const parent = el?.parentElement ?? null;
-        const update = () => setContainerWidth(measureParentWidth(el));
-        update();
-        if (!parent) return;
-        const ro = new ResizeObserver(update);
-        ro.observe(parent);
-        return () => ro.disconnect();
-    }, []);
+    // useEffect(() => {
+    //     const el = ref.current;
+    //     const parent = el?.parentElement ?? null;
+    //     const update = () => setContainerWidth(measureParentWidth(el));
+    //     update();
+    //     if (!parent) return;
+    //     const ro = new ResizeObserver(update);
+    //     ro.observe(parent);
+    //     return () => ro.disconnect();
+    // }, []);
 
     const state = useTable<T>({
         columns,
         data,
         defaultColWidth,
         containerPaddingPx,
-        containerWidth,
+        // containerWidth,
     } as UseTableParams<T> & { containerWidth: number });
 
     const value: TableContextValue<T> = { state, data };
 
     return (
         <TableContext.Provider value={value as InternalTableContextValue}>
-            <table ref={ref} {...props} style={{ tableLayout: 'fixed', width: '100%' }} />
+            <table {...props} style={{ tableLayout: 'fixed', width: '100%' }} />
         </TableContext.Provider>
     );
 };

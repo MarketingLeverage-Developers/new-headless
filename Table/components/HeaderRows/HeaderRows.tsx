@@ -3,6 +3,7 @@ import { useTableContext } from '../../Table';
 import { Row } from '../Row/Row';
 import { Th } from '../Th/Th';
 
+// 실제 컬럼 헤더 행
 export const HeaderRows: React.FC = () => {
     const { state, data } = useTableContext();
     return (
