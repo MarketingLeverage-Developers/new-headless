@@ -9,12 +9,16 @@ const Trigger: React.FC<TriggerProps> = ({ children, ...props }) => {
     const { isOpen, toggle, anchorRef, menuId, setLastFocusedEl } = useDropdown();
 
     const handleClick: React.MouseEventHandler<HTMLDivElement> = (e) => {
+        if (props.disabled) return;
+
         props.onClick?.(e);
         if (!isOpen) setLastFocusedEl(document.activeElement as HTMLElement | null);
         toggle();
     };
 
     const handleKeyDown: React.KeyboardEventHandler<HTMLDivElement> = (e) => {
+        if (props.disabled) return;
+
         if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault();
             if (!isOpen) setLastFocusedEl(document.activeElement as HTMLElement | null);
