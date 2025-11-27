@@ -27,15 +27,15 @@ export {
 
 export interface ColumnType<T> {
     key: string;
-    label?: string; // ✅ 컬럼 라벨(사람이 보는 이름)
+    label?: string;
     render: (item: T, index: number) => React.ReactElement;
     header: (key: string, data: T[]) => React.ReactElement;
-    width?: number | string; // px 또는 %
+    width?: number | string;
 }
 
 export type Column<T> = {
     key: string;
-    label?: string; // ✅ 컬럼 라벨(사람이 보는 이름)
+    label?: string;
     header: (key: string, data: T[]) => React.ReactElement;
     render?: (item: T, index: number) => React.ReactElement;
     width?: number | string;
@@ -46,11 +46,10 @@ export type UseTableParams<T> = {
     columns: Column<T>[];
     data: T[];
     defaultColWidth?: number;
-    containerPaddingPx?: number; // 좌우 여백 등 보정치
+    containerPaddingPx?: number;
 };
 
 export type UseTableResult<T> = {
-    // 그룹 헤더용 데이터 구조
     groupColumnRow: {
         key: string;
         columns: {
@@ -59,16 +58,14 @@ export type UseTableResult<T> = {
             render: (key: string, data?: T[]) => React.ReactElement;
         }[];
     };
-    // 1단 헤더용 데이터 구조
     columnRow: {
         key: string;
         columns: {
             key: string;
             render: (key: string, data?: T[]) => React.ReactElement;
-            width: number; // px 확정
+            width: number;
         }[];
     };
-    // 실제 바디 행 데이터 구조
     rows: {
         key: string;
         item: T;
@@ -77,9 +74,7 @@ export type UseTableResult<T> = {
             render: (item: T, rowIndex: number) => React.ReactElement;
         }[];
     }[];
-    // <col> 스타일 계산용 헬퍼
     getColStyle: (colIndex: number) => React.CSSProperties;
-    // 컬럼 리사이즈 헬퍼
     resizeColumn: (colIndex: number, width: number) => void;
 };
 
@@ -87,9 +82,8 @@ export type UseTableResult<T> = {
    Helpers
    ========================= */
 
-const MIN_COL_WIDTH = 80; // px 기준 최소 너비
+const MIN_COL_WIDTH = 80;
 
-// width 설정값을 px 숫자로 변환하는 헬퍼
 const toNumberPx = (w: number | string | undefined, fallback: number, containerW: number) => {
     if (typeof w === 'number') return w;
 
@@ -111,7 +105,6 @@ const toNumberPx = (w: number | string | undefined, fallback: number, containerW
     return fallback;
 };
 
-// 부모 요소의 content-box width 계산
 const measureParentWidth = (el: HTMLTableElement | null) => {
     if (!el || !el.parentElement) return 0;
     const parent = el.parentElement;
@@ -126,7 +119,6 @@ const measureParentWidth = (el: HTMLTableElement | null) => {
 
 /* =========================
    Hook: useTable
-   - 컬럼 리사이즈 상태 포함
    ========================= */
 
 export const useTable = <T,>({
@@ -136,7 +128,6 @@ export const useTable = <T,>({
     containerPaddingPx = 0,
     containerWidth,
 }: UseTableParams<T> & { containerWidth: number }): UseTableResult<T> => {
-    // children 포함 모든 leaf 컬럼을 1차원 배열로 평탄화
     const leafColumns = useMemo(
         () =>
             columns.flatMap((col) => {
@@ -149,7 +140,7 @@ export const useTable = <T,>({
                 return [
                     {
                         key: col.key,
-                        label: col.label, // ✅ label 전달
+                        label: col.label,
                         render,
                         header: col.header,
                         width: col.width,
@@ -159,19 +150,15 @@ export const useTable = <T,>({
         [columns]
     );
 
-    // 컨테이너 내 실제 사용가능 폭 (px)
     const innerWidth = Math.max(0, containerWidth - containerPaddingPx);
 
-    // 각 leaf의 기본 px 폭 계산 (px / % 모두 지원)
     const baseLeafWidthsPx = useMemo(
         () => leafColumns.map((c) => toNumberPx(c.width, defaultColWidth, innerWidth)),
         [leafColumns, defaultColWidth, innerWidth]
     );
 
-    // 컬럼 width 상태 (리사이즈 반영)
     const [columnWidths, setColumnWidths] = useState<number[]>([]);
 
-    // leafColumns 변경 시 길이 맞춰 초기화/보정
     useEffect(() => {
         setColumnWidths((prev) => {
             if (prev.length === leafColumns.length) {
@@ -202,7 +189,6 @@ export const useTable = <T,>({
         });
     };
 
-    // 1단 헤더용 데이터 구조
     const columnRow = useMemo(
         () => ({
             key: 'column',
@@ -221,7 +207,6 @@ export const useTable = <T,>({
         [leafColumns, columnWidths, baseLeafWidthsPx, data, defaultColWidth]
     );
 
-    // 그룹 헤더 colSpan 계산 (모든 leaf 기준)
     const groupColumnRow = useMemo(() => {
         const leafKeys = new Set(leafColumns.map((c) => c.key));
 
@@ -245,7 +230,6 @@ export const useTable = <T,>({
         };
     }, [columns, data, leafColumns]);
 
-    // 각 행에 대해 leaf 컬럼만 셀로 구성
     const rows = useMemo(
         () =>
             data.map((item, rowIndex) => ({
@@ -259,7 +243,6 @@ export const useTable = <T,>({
         [data, leafColumns]
     );
 
-    // <col> 스타일 계산
     const getColStyle = (colIndex: number): React.CSSProperties => {
         const w = columnRow.columns[colIndex]?.width ?? defaultColWidth;
         return { width: `${w}px` };
@@ -284,7 +267,6 @@ export const useTableContext = <T,>(): { state: UseTableResult<T>; data: T[] } =
 
 /* =========================
    TableInner
-   - 부모 width 측정 + useTable 호출 + Context 제공
    ========================= */
 
 const TableInner = <T,>({
@@ -335,7 +317,7 @@ const TableInner = <T,>({
                 ref={ref}
                 style={{
                     tableLayout: 'fixed',
-                    width: '100%',
+                    width: 'max-content', // ✅ 여기! 100% → auto 로 변경
                     ...style,
                 }}
             />
