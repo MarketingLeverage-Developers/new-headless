@@ -13,7 +13,6 @@ import {
     Toggle,
 } from './components';
 
-// ⬅️ re-export: Details 모듈의 훅/프로바이더를 Table 모듈에서 다시 내보내기
 export {
     RowDetailsProvider,
     useDetailsRenderer,
@@ -114,7 +113,9 @@ const measureParentWidth = (el: HTMLTableElement | null) => {
     const padR = parseFloat(cs.paddingRight || '0');
 
     const contentBoxWidth = parent.clientWidth - padL - padR;
-    return Math.max(0, contentBoxWidth);
+    const contentBoxWidthClamped = Math.max(0, contentBoxWidth);
+
+    return contentBoxWidthClamped;
 };
 
 /* =========================
@@ -310,6 +311,9 @@ const TableInner = <T,>({
 
     const value: TableContextValue<T> = { state, data };
 
+    // ✅ 모든 컬럼 width 합으로 테이블 width 계산
+    const totalTableWidth = state.columnRow.columns.reduce((sum, col) => sum + col.width, 0);
+
     return (
         <TableContext.Provider value={value as InternalTableContextValue}>
             <table
@@ -317,7 +321,11 @@ const TableInner = <T,>({
                 ref={ref}
                 style={{
                     tableLayout: 'fixed',
-                    width: 'max-content', // ✅ 여기! 100% → auto 로 변경
+                    // 컬럼 width 합만큼만 테이블을 그린다 (스크롤은 바깥 컨테이너에서 처리)
+                    width: `${totalTableWidth}px`,
+                    // 긴 텍스트는 컬럼 폭 안에서 줄바꿈되도록
+                    whiteSpace: 'normal',
+                    overflowWrap: 'anywhere',
                     ...style,
                 }}
             />
