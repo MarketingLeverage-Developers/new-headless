@@ -27,6 +27,7 @@ export {
 
 export interface ColumnType<T> {
     key: string;
+    label?: string; // ✅ 컬럼 라벨(사람이 보는 이름)
     render: (item: T, index: number) => React.ReactElement;
     header: (key: string, data: T[]) => React.ReactElement;
     width?: number | string; // px 또는 %
@@ -34,6 +35,7 @@ export interface ColumnType<T> {
 
 export type Column<T> = {
     key: string;
+    label?: string; // ✅ 컬럼 라벨(사람이 보는 이름)
     header: (key: string, data: T[]) => React.ReactElement;
     render?: (item: T, index: number) => React.ReactElement;
     width?: number | string;
@@ -147,6 +149,7 @@ export const useTable = <T,>({
                 return [
                     {
                         key: col.key,
+                        label: col.label, // ✅ label 전달
                         render,
                         header: col.header,
                         width: col.width,
