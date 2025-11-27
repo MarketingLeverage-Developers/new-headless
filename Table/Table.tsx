@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useMemo } from 'react';
+import React, { createContext, useContext, useMemo, useState, useEffect, useRef } from 'react';
 import {
     Body,
     BodyRows,
@@ -66,7 +66,7 @@ export type UseTableResult<T> = {
             width: number; // px 확정
         }[];
     };
-    // 실제 바디 행 데이터 구조 (이제 hiddenCells 없음)
+    // 실제 바디 행 데이터 구조
     rows: {
         key: string;
         item: T;
@@ -77,24 +77,35 @@ export type UseTableResult<T> = {
     }[];
     // <col> 스타일 계산용 헬퍼
     getColStyle: (colIndex: number) => React.CSSProperties;
+    // 컬럼 리사이즈 헬퍼
+    resizeColumn: (colIndex: number, width: number) => void;
 };
 
 /* =========================
    Helpers
    ========================= */
 
+const MIN_COL_WIDTH = 80; // px 기준 최소 너비
+
 // width 설정값을 px 숫자로 변환하는 헬퍼
 const toNumberPx = (w: number | string | undefined, fallback: number, containerW: number) => {
     if (typeof w === 'number') return w;
+
     if (typeof w === 'string') {
         const s = w.trim();
+
         if (s.endsWith('%')) {
             const p = parseFloat(s.slice(0, -1));
-            if (!Number.isNaN(p)) return Math.max(0, (containerW * p) / 100);
+            if (!Number.isNaN(p) && containerW > 0) {
+                return Math.max(0, (containerW * p) / 100);
+            }
+            return fallback;
         }
+
         const px = parseFloat(s);
         if (!Number.isNaN(px)) return px;
     }
+
     return fallback;
 };
 
@@ -113,7 +124,7 @@ const measureParentWidth = (el: HTMLTableElement | null) => {
 
 /* =========================
    Hook: useTable
-   - 모든 컬럼을 그대로 렌더링 (더 이상 뷰포트에 따른 숨김 처리 없음)
+   - 컬럼 리사이즈 상태 포함
    ========================= */
 
 export const useTable = <T,>({
@@ -128,10 +139,19 @@ export const useTable = <T,>({
         () =>
             columns.flatMap((col) => {
                 if (col.children && col.children.length > 0) return col.children;
+
                 const render =
                     col.render ??
                     (((_it: T, _idx: number) => null) as unknown as (item: T, index: number) => React.ReactElement);
-                return [{ key: col.key, render, header: col.header, width: col.width } as ColumnType<T>];
+
+                return [
+                    {
+                        key: col.key,
+                        render,
+                        header: col.header,
+                        width: col.width,
+                    } as ColumnType<T>,
+                ];
             }),
         [columns]
     );
@@ -139,28 +159,69 @@ export const useTable = <T,>({
     // 컨테이너 내 실제 사용가능 폭 (px)
     const innerWidth = Math.max(0, containerWidth - containerPaddingPx);
 
-    // 각 leaf의 실제 px 폭 계산 (px / % 모두 지원)
-    const leafWidthsPx = useMemo(
+    // 각 leaf의 기본 px 폭 계산 (px / % 모두 지원)
+    const baseLeafWidthsPx = useMemo(
         () => leafColumns.map((c) => toNumberPx(c.width, defaultColWidth, innerWidth)),
         [leafColumns, defaultColWidth, innerWidth]
     );
 
-    // 더 이상 컬럼을 자르지 않고 전체 leafColumns를 모두 사용
+    // 컬럼 width 상태 (리사이즈 반영)
+    const [columnWidths, setColumnWidths] = useState<number[]>([]);
+
+    // leafColumns 변경 시 길이 맞춰 초기화/보정
+    useEffect(() => {
+        setColumnWidths((prev) => {
+            if (prev.length === leafColumns.length) {
+                return prev;
+            }
+
+            const next = leafColumns.map((_col, idx) => {
+                if (idx < prev.length && typeof prev[idx] === 'number' && prev[idx] > 0) {
+                    return prev[idx];
+                }
+
+                const base = baseLeafWidthsPx[idx];
+                return Number.isFinite(base) ? base : defaultColWidth;
+            });
+
+            return next;
+        });
+    }, [leafColumns, baseLeafWidthsPx, defaultColWidth]);
+
+    const resizeColumn = (colIndex: number, width: number) => {
+        setColumnWidths((prev) => {
+            if (colIndex < 0 || colIndex >= leafColumns.length) return prev;
+
+            const next = [...prev];
+            const clamped = Math.max(MIN_COL_WIDTH, width);
+            next[colIndex] = clamped;
+            return next;
+        });
+    };
+
+    // 1단 헤더용 데이터 구조
     const columnRow = useMemo(
         () => ({
             key: 'column',
-            columns: leafColumns.map((c, idx) => ({
-                key: c.key,
-                render: () => c.header(c.key, data),
-                width: Math.round(leafWidthsPx[idx] ?? defaultColWidth),
-            })),
+            columns: leafColumns.map((c, idx) => {
+                const stored = columnWidths[idx];
+                const base = baseLeafWidthsPx[idx] ?? defaultColWidth;
+                const width = typeof stored === 'number' && stored > 0 ? stored : base;
+
+                return {
+                    key: c.key,
+                    render: () => c.header(c.key, data),
+                    width: Math.round(width),
+                };
+            }),
         }),
-        [leafColumns, leafWidthsPx, data, defaultColWidth]
+        [leafColumns, columnWidths, baseLeafWidthsPx, data, defaultColWidth]
     );
 
     // 그룹 헤더 colSpan 계산 (모든 leaf 기준)
     const groupColumnRow = useMemo(() => {
         const leafKeys = new Set(leafColumns.map((c) => c.key));
+
         const calcSpan = (col: Column<T>) => {
             if (col.children && col.children.length > 0) {
                 const span = col.children.filter((ch) => leafKeys.has(ch.key)).length;
@@ -168,6 +229,7 @@ export const useTable = <T,>({
             }
             return leafKeys.has(col.key) ? 1 : 0;
         };
+
         return {
             key: 'group-column',
             columns: columns
@@ -180,7 +242,7 @@ export const useTable = <T,>({
         };
     }, [columns, data, leafColumns]);
 
-    // 각 행에 대해 visible leaf 컬럼만 셀로 구성 (hiddenCells 제거)
+    // 각 행에 대해 leaf 컬럼만 셀로 구성
     const rows = useMemo(
         () =>
             data.map((item, rowIndex) => ({
@@ -195,12 +257,12 @@ export const useTable = <T,>({
     );
 
     // <col> 스타일 계산
-    const getColStyle = (colIndex: number) => {
+    const getColStyle = (colIndex: number): React.CSSProperties => {
         const w = columnRow.columns[colIndex]?.width ?? defaultColWidth;
         return { width: `${w}px` };
     };
 
-    return { groupColumnRow, columnRow, rows, getColStyle };
+    return { groupColumnRow, columnRow, rows, getColStyle, resizeColumn };
 };
 
 /* =========================
@@ -227,35 +289,53 @@ const TableInner = <T,>({
     data,
     defaultColWidth = 200,
     containerPaddingPx = 0,
-    ...props
+    style,
+    ...rest
 }: UseTableParams<T> & React.HTMLAttributes<HTMLTableElement>) => {
-    // const ref = useRef<HTMLTableElement | null>(null);
-    // const [containerWidth, setContainerWidth] = useState<number>(0);
+    const ref = useRef<HTMLTableElement | null>(null);
+    const [containerWidth, setContainerWidth] = useState<number>(0);
 
-    // useEffect(() => {
-    //     const el = ref.current;
-    //     const parent = el?.parentElement ?? null;
-    //     const update = () => setContainerWidth(measureParentWidth(el));
-    //     update();
-    //     if (!parent) return;
-    //     const ro = new ResizeObserver(update);
-    //     ro.observe(parent);
-    //     return () => ro.disconnect();
-    // }, []);
+    useEffect(() => {
+        const el = ref.current;
+        const parent = el?.parentElement ?? null;
+
+        const update = () => {
+            setContainerWidth(measureParentWidth(el));
+        };
+
+        update();
+
+        if (!parent) return;
+
+        const ro = new ResizeObserver(update);
+        ro.observe(parent);
+
+        return () => {
+            ro.disconnect();
+        };
+    }, []);
 
     const state = useTable<T>({
         columns,
         data,
         defaultColWidth,
         containerPaddingPx,
-        // containerWidth,
-    } as UseTableParams<T> & { containerWidth: number });
+        containerWidth,
+    });
 
     const value: TableContextValue<T> = { state, data };
 
     return (
         <TableContext.Provider value={value as InternalTableContextValue}>
-            <table {...props} style={{ tableLayout: 'fixed', width: '100%' }} />
+            <table
+                {...rest}
+                ref={ref}
+                style={{
+                    tableLayout: 'fixed',
+                    width: '100%',
+                    ...style,
+                }}
+            />
         </TableContext.Provider>
     );
 };
