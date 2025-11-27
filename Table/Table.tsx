@@ -75,6 +75,10 @@ export type UseTableResult<T> = {
     }[];
     getColStyle: (colIndex: number) => React.CSSProperties;
     resizeColumn: (colIndex: number, width: number) => void;
+
+    // ✅ 추가: 컬럼 순서 + 재배열 API
+    columnOrder: string[];
+    reorderColumn: (fromKey: string, toKey: string) => void;
 };
 
 /* =========================
@@ -113,9 +117,7 @@ const measureParentWidth = (el: HTMLTableElement | null) => {
     const padR = parseFloat(cs.paddingRight || '0');
 
     const contentBoxWidth = parent.clientWidth - padL - padR;
-    const contentBoxWidthClamped = Math.max(0, contentBoxWidth);
-
-    return contentBoxWidthClamped;
+    return Math.max(0, contentBoxWidth);
 };
 
 /* =========================
@@ -129,6 +131,7 @@ export const useTable = <T,>({
     containerPaddingPx = 0,
     containerWidth,
 }: UseTableParams<T> & { containerWidth: number }): UseTableResult<T> => {
+    // 1) 컬럼 정의를 leaf 컬럼으로 평탄화
     const leafColumns = useMemo(
         () =>
             columns.flatMap((col) => {
@@ -160,6 +163,10 @@ export const useTable = <T,>({
 
     const [columnWidths, setColumnWidths] = useState<number[]>([]);
 
+    // ✅ 컬럼 순서 상태 (key 배열)
+    const [columnOrder, setColumnOrder] = useState<string[]>(() => leafColumns.map((c) => c.key));
+
+    // leafColumns 변경 시, columnWidths 길이 맞추기 + columnOrder도 동기화
     useEffect(() => {
         setColumnWidths((prev) => {
             if (prev.length === leafColumns.length) {
@@ -177,11 +184,28 @@ export const useTable = <T,>({
 
             return next;
         });
+
+        setColumnOrder((prev) => {
+            const leafKeys = leafColumns.map((c) => c.key);
+            const next: string[] = [];
+
+            // 기존 순서 중 아직 존재하는 key 유지
+            prev.forEach((key) => {
+                if (leafKeys.includes(key)) next.push(key);
+            });
+
+            // 새로 생긴 컬럼 key는 뒤에 추가
+            leafKeys.forEach((key) => {
+                if (!next.includes(key)) next.push(key);
+            });
+
+            return next;
+        });
     }, [leafColumns, baseLeafWidthsPx, defaultColWidth]);
 
     const resizeColumn = (colIndex: number, width: number) => {
         setColumnWidths((prev) => {
-            if (colIndex < 0 || colIndex >= leafColumns.length) return prev;
+            if (colIndex < 0 || colIndex >= prev.length) return prev;
 
             const next = [...prev];
             const clamped = Math.max(MIN_COL_WIDTH, width);
@@ -190,10 +214,34 @@ export const useTable = <T,>({
         });
     };
 
+    // ✅ columnOrder 순서를 기준으로 leafColumns 정렬
+    const orderedLeafColumns = useMemo(() => {
+        const map = new Map<string, ColumnType<T>>();
+        leafColumns.forEach((c) => {
+            map.set(c.key, c);
+        });
+
+        const result: ColumnType<T>[] = [];
+        columnOrder.forEach((key) => {
+            const col = map.get(key);
+            if (col) result.push(col);
+        });
+
+        // 혹시라도 columnOrder에 없는 컬럼이 있다면 뒤에 추가
+        leafColumns.forEach((c) => {
+            if (!columnOrder.includes(c.key)) {
+                result.push(c);
+            }
+        });
+
+        return result;
+    }, [leafColumns, columnOrder]);
+
+    // 1단 헤더용 데이터 구조
     const columnRow = useMemo(
         () => ({
             key: 'column',
-            columns: leafColumns.map((c, idx) => {
+            columns: orderedLeafColumns.map((c, idx) => {
                 const stored = columnWidths[idx];
                 const base = baseLeafWidthsPx[idx] ?? defaultColWidth;
                 const width = typeof stored === 'number' && stored > 0 ? stored : base;
@@ -205,11 +253,11 @@ export const useTable = <T,>({
                 };
             }),
         }),
-        [leafColumns, columnWidths, baseLeafWidthsPx, data, defaultColWidth]
+        [orderedLeafColumns, columnWidths, baseLeafWidthsPx, data, defaultColWidth]
     );
 
     const groupColumnRow = useMemo(() => {
-        const leafKeys = new Set(leafColumns.map((c) => c.key));
+        const leafKeys = new Set(orderedLeafColumns.map((c) => c.key));
 
         const calcSpan = (col: Column<T>) => {
             if (col.children && col.children.length > 0) {
@@ -229,19 +277,19 @@ export const useTable = <T,>({
                 }))
                 .filter((c) => c.colSpan > 0),
         };
-    }, [columns, data, leafColumns]);
+    }, [columns, data, orderedLeafColumns]);
 
     const rows = useMemo(
         () =>
             data.map((item, rowIndex) => ({
                 key: `row-${rowIndex}`,
                 item,
-                cells: leafColumns.map((leaf) => ({
+                cells: orderedLeafColumns.map((leaf) => ({
                     key: leaf.key,
                     render: (it: T, idx: number) => leaf.render(it, idx),
                 })),
             })),
-        [data, leafColumns]
+        [data, orderedLeafColumns]
     );
 
     const getColStyle = (colIndex: number): React.CSSProperties => {
@@ -249,7 +297,33 @@ export const useTable = <T,>({
         return { width: `${w}px` };
     };
 
-    return { groupColumnRow, columnRow, rows, getColStyle, resizeColumn };
+    // ✅ 드래그앤드롭용 재배열 함수
+    const reorderColumn = (fromKey: string, toKey: string) => {
+        setColumnOrder((prev) => {
+            if (fromKey === toKey) return prev;
+
+            const fromIndex = prev.indexOf(fromKey);
+            const toIndex = prev.indexOf(toKey);
+
+            if (fromIndex === -1 || toIndex === -1) return prev;
+
+            const next = [...prev];
+            const [moved] = next.splice(fromIndex, 1);
+            next.splice(toIndex, 0, moved);
+
+            return next;
+        });
+    };
+
+    return {
+        groupColumnRow,
+        columnRow,
+        rows,
+        getColStyle,
+        resizeColumn,
+        columnOrder,
+        reorderColumn,
+    };
 };
 
 /* =========================
@@ -311,7 +385,7 @@ const TableInner = <T,>({
 
     const value: TableContextValue<T> = { state, data };
 
-    // ✅ 모든 컬럼 width 합으로 테이블 width 계산
+    // 필요하다면 여기에서 totalTableWidth 계산해서 width px로 줄 수도 있음
     const totalTableWidth = state.columnRow.columns.reduce((sum, col) => sum + col.width, 0);
 
     return (
@@ -321,9 +395,7 @@ const TableInner = <T,>({
                 ref={ref}
                 style={{
                     tableLayout: 'fixed',
-                    // 컬럼 width 합만큼만 테이블을 그린다 (스크롤은 바깥 컨테이너에서 처리)
                     width: `${totalTableWidth}px`,
-                    // 긴 텍스트는 컬럼 폭 안에서 줄바꿈되도록
                     whiteSpace: 'normal',
                     overflowWrap: 'anywhere',
                     ...style,
