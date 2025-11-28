@@ -14,6 +14,7 @@ type ColumnSelectBoxProps = {
     checkboxWrapperClassName?: string;
     checkboxWrapperCheckedClassName?: string;
     labelClassName?: string;
+    itemNode: (label: string, checked: boolean) => React.ReactNode;
 };
 
 const ColumnSelectBox = <T,>({
@@ -24,6 +25,7 @@ const ColumnSelectBox = <T,>({
     checkboxWrapperClassName,
     checkboxWrapperCheckedClassName,
     labelClassName,
+    itemNode,
 }: ColumnSelectBoxProps) => {
     // ✅ Table 컨텍스트에서 컬럼 + 상태 직접 가져오기
     const { state, columns } = useTableContext<T>();
@@ -76,8 +78,9 @@ const ColumnSelectBox = <T,>({
 
                             return (
                                 <ManySelect.Item key={key} value={key} className={classNames(itemClassName)}>
-                                    <div className={checkboxClassName(key)} />
-                                    <span className={labelClassName}>{item.label ?? key}</span>
+                                    {/* <div className={checkboxClassName(key)} />
+                                    <span className={labelClassName}>{item.label ?? key}</span> */}
+                                    {itemNode(item.label ?? item.key, visibleColumnKeys.includes(key))}
                                 </ManySelect.Item>
                             );
                         })}
