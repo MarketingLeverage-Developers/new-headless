@@ -13,6 +13,7 @@ import {
     Toggle,
 } from './components';
 import ColumnSelectBox from './components/ColumnSelectBox/ColumnSelectBox';
+import View from './components/View/View';
 
 export {
     RowDetailsProvider,
@@ -77,11 +78,11 @@ export type UseTableResult<T> = {
     getColStyle: (colIndex: number) => React.CSSProperties;
     resizeColumn: (colIndex: number, width: number) => void;
 
-    // ✅ 추가: 컬럼 순서 + 재배열
+    // 컬럼 순서 + 재배열
     columnOrder: string[];
     reorderColumn: (fromKey: string, toKey: string) => void;
 
-    // ✅ 추가: 컬럼 노출 상태
+    // 컬럼 노출 상태
     visibleColumnKeys: string[];
     setVisibleColumnKeys: (keys: string[]) => void;
 };
@@ -113,18 +114,6 @@ const toNumberPx = (w: number | string | undefined, fallback: number, containerW
     return fallback;
 };
 
-const measureParentWidth = (el: HTMLTableElement | null) => {
-    if (!el || !el.parentElement) return 0;
-    const parent = el.parentElement;
-
-    const cs = getComputedStyle(parent);
-    const padL = parseFloat(cs.paddingLeft || '0');
-    const padR = parseFloat(cs.paddingRight || '0');
-
-    const contentBoxWidth = parent.clientWidth - padL - padR;
-    return Math.max(0, contentBoxWidth);
-};
-
 /* =========================
    Hook: useTable
    ========================= */
@@ -136,7 +125,7 @@ export const useTable = <T,>({
     containerPaddingPx = 0,
     containerWidth,
 }: UseTableParams<T> & { containerWidth: number }): UseTableResult<T> => {
-    // 1) leaf 컬럼으로 평탄화
+    // leaf 컬럼으로 평탄화
     const leafColumns = useMemo(
         () =>
             columns.flatMap((col) => {
@@ -168,10 +157,10 @@ export const useTable = <T,>({
 
     const [columnWidths, setColumnWidths] = useState<number[]>([]);
 
-    // ✅ 컬럼 순서 상태
+    // 컬럼 순서 상태
     const [columnOrder, setColumnOrder] = useState<string[]>(() => leafColumns.map((c) => c.key));
 
-    // ✅ 컬럼 노출 상태 (기본: 모든 컬럼 ON)
+    // 컬럼 노출 상태 (기본: 모든 컬럼 ON)
     const [visibleColumnKeys, setVisibleColumnKeys] = useState<string[]>(() => leafColumns.map((c) => c.key));
 
     // leafColumns 변경 시, width / order / visible 동기화
@@ -237,7 +226,7 @@ export const useTable = <T,>({
         });
     };
 
-    // ✅ 순서 기준으로 컬럼 정렬
+    // 순서 기준으로 leaf 컬럼 정렬
     const orderedLeafColumns = useMemo(() => {
         const map = new Map<string, ColumnType<T>>();
         leafColumns.forEach((c) => {
@@ -260,7 +249,7 @@ export const useTable = <T,>({
         return result;
     }, [leafColumns, columnOrder]);
 
-    // ✅ 1단 헤더: "보이는" 컬럼만
+    // 1단 헤더: "보이는" 컬럼만
     const columnRow = useMemo(() => {
         const cols = orderedLeafColumns;
 
@@ -339,7 +328,7 @@ export const useTable = <T,>({
         return { width: `${w}px` };
     };
 
-    // ✅ 드래그앤드롭용 재배열
+    // 드래그앤드롭용 재배열
     const reorderColumn = (fromKey: string, toKey: string) => {
         setColumnOrder((prev) => {
             if (fromKey === toKey) return prev;
@@ -385,7 +374,7 @@ export const useTableContext = <T,>(): { state: UseTableResult<T>; data: T[]; co
 };
 
 /* =========================
-   TableInner
+   Table Provider (Wrapper)
    ========================= */
 
 const TableInner = <T,>({
@@ -394,25 +383,24 @@ const TableInner = <T,>({
     defaultColWidth = 200,
     containerPaddingPx = 0,
     style,
+    children,
     ...rest
-}: UseTableParams<T> & React.HTMLAttributes<HTMLTableElement>) => {
-    const ref = useRef<HTMLTableElement | null>(null);
+}: UseTableParams<T> & React.HTMLAttributes<HTMLDivElement>) => {
+    const wrapperRef = useRef<HTMLDivElement | null>(null);
     const [containerWidth, setContainerWidth] = useState<number>(0);
 
     useEffect(() => {
-        const el = ref.current;
-        const parent = el?.parentElement ?? null;
+        const el = wrapperRef.current;
+        if (!el) return;
 
         const update = () => {
-            setContainerWidth(measureParentWidth(el));
+            setContainerWidth(el.clientWidth);
         };
 
         update();
 
-        if (!parent) return;
-
         const ro = new ResizeObserver(update);
-        ro.observe(parent);
+        ro.observe(el);
 
         return () => {
             ro.disconnect();
@@ -429,22 +417,42 @@ const TableInner = <T,>({
 
     const value: TableContextValue<T> = { state, data, columns };
 
+    return (
+        <TableContext.Provider value={value as InternalTableContextValue}>
+            <div
+                {...rest}
+                ref={wrapperRef}
+                style={{
+                    width: '100%',
+                    ...style,
+                }}
+            >
+                {children}
+            </div>
+        </TableContext.Provider>
+    );
+};
+
+/* =========================
+   Table View (<table> DOM)
+   ========================= */
+
+const TableView = <T,>(props: React.TableHTMLAttributes<HTMLTableElement>) => {
+    const { state } = useTableContext<T>();
+
     const totalTableWidth = state.columnRow.columns.reduce((sum, col) => sum + col.width, 0);
 
     return (
-        <TableContext.Provider value={value as InternalTableContextValue}>
-            <table
-                {...rest}
-                ref={ref}
-                style={{
-                    tableLayout: 'fixed',
-                    width: `${totalTableWidth}px`,
-                    whiteSpace: 'normal',
-                    overflowWrap: 'anywhere',
-                    ...style,
-                }}
-            />
-        </TableContext.Provider>
+        <table
+            {...props}
+            style={{
+                tableLayout: 'fixed',
+                width: `${totalTableWidth}px`,
+                whiteSpace: 'normal',
+                overflowWrap: 'anywhere',
+                ...props.style,
+            }}
+        />
     );
 };
 
@@ -465,6 +473,7 @@ type TableStatics = {
     Toggle: typeof Toggle;
     Th: typeof Th;
     ColumnSelectBox: typeof ColumnSelectBox;
+    View: typeof View;
 };
 
 const Table = TableInner as typeof TableInner & TableStatics;
@@ -481,5 +490,6 @@ Table.Details = Details;
 Table.Toggle = Toggle;
 Table.Th = Th;
 Table.ColumnSelectBox = ColumnSelectBox;
+Table.View = View;
 
 export default Table;
