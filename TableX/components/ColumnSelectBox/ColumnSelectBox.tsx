@@ -14,7 +14,7 @@ type ColumnSelectBoxProps = {
     checkboxWrapperClassName?: string;
     checkboxWrapperCheckedClassName?: string;
     labelClassName?: string;
-    itemNode: (label: string, checked: boolean) => React.ReactNode;
+    itemNode?: (label: string, checked: boolean) => React.ReactNode;
 };
 
 const ColumnSelectBox = <T,>({
@@ -80,7 +80,7 @@ const ColumnSelectBox = <T,>({
                                 <ManySelect.Item key={key} value={key} className={classNames(itemClassName)}>
                                     {/* <div className={checkboxClassName(key)} />
                                     <span className={labelClassName}>{item.label ?? key}</span> */}
-                                    {itemNode(item.label ?? item.key, visibleColumnKeys.includes(key))}
+                                    {itemNode?.(item.label ?? item.key, visibleColumnKeys.includes(key))}
                                 </ManySelect.Item>
                             );
                         })}
