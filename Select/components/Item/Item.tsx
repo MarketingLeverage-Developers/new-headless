@@ -29,7 +29,6 @@ const Item: React.FC<SelectItemProps> = ({
         changeSelectValue(value);
         onClick?.(value);
     };
-    console.log('item', selectValue);
 
     return (
         <div {...props} onClick={handleClick} aria-pressed={isActive(value)}>
