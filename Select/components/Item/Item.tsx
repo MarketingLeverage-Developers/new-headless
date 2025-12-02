@@ -22,14 +22,13 @@ const Item: React.FC<SelectItemProps> = ({
     onClick, // 외부에서 추가로 onClick 쓰면 체이닝
     ...props
 }) => {
-    const { changeSelectValue, isActive, selectValue } = useSelect();
+    const { changeSelectValue, isActive } = useSelect();
 
     // 클릭 시: 컨텍스트 변경 + 콜백 체이닝
-    const handleClick: React.MouseEventHandler<HTMLDivElement> = (e) => {
+    const handleClick: React.MouseEventHandler<HTMLDivElement> = () => {
         changeSelectValue(value);
         onClick?.(value);
     };
-    console.log('item', selectValue);
 
     return (
         <div {...props} onClick={handleClick} aria-pressed={isActive(value)}>

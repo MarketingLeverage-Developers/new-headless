@@ -5,7 +5,7 @@
 // - 정적 프로퍼티(Item) 부착
 
 import type { ReactNode } from 'react';
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useState, useMemo, useCallback } from 'react';
 import Item from './components/Item/Item';
 import { Display } from './components';
 
@@ -41,31 +41,34 @@ const Select = (({ children, defaultValue = '', value, onChange }: SelectProps) 
     // 현재 값(컨트롤드면 외부 value, 아니면 내부 state)
     const currentValue = (isControlled ? value : internalValue) as string;
 
-    // 값 변경 (심플 버전: 메모화 없음)
-    const changeSelectValue = (next: string) => {
-        if (isControlled) {
-            onChange?.(next); // 외부 제어: 콜백만
-        } else {
-            setInternalValue(next); // 내부 제어: 상태 변경
-            onChange?.(next); // 필요 시 외부 알림
-        }
-    };
-
-    // 활성 여부 (심플 버전: 메모화 없음)
-    const isActive = (v: string) => v === currentValue;
-
-    // Provider에 바로 객체 전달 (심플 버전)
-    return (
-        <SelectContext.Provider
-            value={{
-                selectValue: currentValue,
-                changeSelectValue,
-                isActive,
-            }}
-        >
-            {children}
-        </SelectContext.Provider>
+    // 값 변경 (메모화 적용)
+    const changeSelectValue = useCallback(
+        (next: string) => {
+            if (isControlled) {
+                onChange?.(next); // 외부 제어: 콜백만
+            } else {
+                setInternalValue(next); // 내부 제어: 상태 변경
+                onChange?.(next); // 필요 시 외부 알림
+            }
+        },
+        [isControlled, onChange]
     );
+
+    // 활성 여부 (메모화 적용)
+    const isActive = useCallback((v: string) => v === currentValue, [currentValue]);
+
+    // Context value 메모화
+    const contextValue = useMemo(
+        () => ({
+            selectValue: currentValue,
+            changeSelectValue,
+            isActive,
+        }),
+        [currentValue, changeSelectValue, isActive]
+    );
+
+    // Provider에 메모화된 객체 전달
+    return <SelectContext.Provider value={contextValue}>{children}</SelectContext.Provider>;
 }) as SelectComponent;
 
 // 정적 프로퍼티 부착
