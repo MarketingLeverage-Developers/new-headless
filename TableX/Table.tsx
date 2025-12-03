@@ -48,6 +48,10 @@ export type UseTableParams<T> = {
     data: T[];
     defaultColWidth?: number;
     containerPaddingPx?: number;
+
+    // 각 row의 key를 item 특정 필드 값으로 사용하기 위한 옵션
+    // 예: rowKeyField="id" -> item["id"]가 key로 사용됨 (없으면 rowIndex로 fallback)
+    rowKeyField?: string;
 };
 
 export type UseTableResult<T> = {
@@ -56,7 +60,7 @@ export type UseTableResult<T> = {
         columns: {
             key: string;
             colSpan: number;
-            render: (key: string, data?: T[]) => React.ReactElement;
+            render: (key: string, data: T[]) => React.ReactElement;
         }[];
     };
     columnRow: {
@@ -124,6 +128,7 @@ export const useTable = <T,>({
     defaultColWidth = 200,
     containerPaddingPx = 0,
     containerWidth,
+    rowKeyField,
 }: UseTableParams<T> & { containerWidth: number }): UseTableResult<T> => {
     // leaf 컬럼으로 평탄화
     const leafColumns = useMemo(
@@ -310,17 +315,26 @@ export const useTable = <T,>({
     // 바디 행: "보이는" 컬럼만 셀로 구성
     const rows = useMemo(
         () =>
-            data.map((item, rowIndex) => ({
-                key: `row-${rowIndex}`,
-                item,
-                cells: orderedLeafColumns
-                    .filter((leaf) => visibleColumnKeys.includes(leaf.key))
-                    .map((leaf) => ({
-                        key: leaf.key,
-                        render: (it: T, idx: number) => leaf.render(it, idx),
-                    })),
-            })),
-        [data, orderedLeafColumns, visibleColumnKeys]
+            data.map((item, rowIndex) => {
+                // rowKeyField가 주어졌으면 item[rowKeyField]를 우선 key로 사용
+                // 값이 없거나 string/number가 아니면 rowIndex 기반 fallback
+                const rawKey = rowKeyField ? (item as Record<string, unknown>)[rowKeyField] : undefined;
+
+                const keyValue =
+                    typeof rawKey === 'string' || typeof rawKey === 'number' ? String(rawKey) : `row-${rowIndex}`;
+
+                return {
+                    key: keyValue,
+                    item,
+                    cells: orderedLeafColumns
+                        .filter((leaf) => visibleColumnKeys.includes(leaf.key))
+                        .map((leaf) => ({
+                            key: leaf.key,
+                            render: (it: T, idx: number) => leaf.render(it, idx),
+                        })),
+                };
+            }),
+        [data, orderedLeafColumns, visibleColumnKeys, rowKeyField]
     );
 
     const getColStyle = (colIndex: number): React.CSSProperties => {
@@ -384,6 +398,7 @@ const TableInner = <T,>({
     containerPaddingPx = 0,
     style,
     children,
+    rowKeyField,
     ...rest
 }: UseTableParams<T> & React.HTMLAttributes<HTMLDivElement>) => {
     const wrapperRef = useRef<HTMLDivElement | null>(null);
@@ -413,6 +428,7 @@ const TableInner = <T,>({
         defaultColWidth,
         containerPaddingPx,
         containerWidth,
+        rowKeyField,
     });
 
     const value: TableContextValue<T> = { state, data, columns };
