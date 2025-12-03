@@ -57,32 +57,35 @@ export const HeaderRows: React.FC<HeaderRowsProps> = ({ height, RowComponent, Th
                 >
                     {col.render(col.key, data)}
 
-                    {/* 오른쪽 리사이즈 핸들 영역 */}
-                    <span
-                        onMouseDown={handleMouseDown(i)}
-                        style={{
-                            position: 'absolute',
-                            top: 4,
-                            right: 0,
-                            bottom: 4,
-                            width: 8, // 클릭하기 편하도록 약간 넓게
-                            cursor: 'col-resize',
-                            userSelect: 'none',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                        }}
-                    >
-                        {/* 실제 눈에 보이는 세로 막대 */}
+                    {/* 오른쪽 리사이즈 핸들 영역 - disableColumnInteractions가 false일 때만 렌더링 */}
+                    {!state.disableColumnInteractions && (
                         <span
+                            onMouseDown={handleMouseDown(i)}
                             style={{
-                                width: 1,
-                                height: '60%',
-                                borderRadius: 999,
-                                backgroundColor: 'rgba(0,0,0,0.15)',
+                                position: 'absolute',
+                                top: 4,
+                                right: -15, // 터치 영역 확보를 위해 우측으로 이동
+                                bottom: 4,
+                                width: 30, // 8 -> 30 (모바일 터치 용이성)
+                                zIndex: 10,
+                                cursor: 'col-resize',
+                                userSelect: 'none',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
                             }}
-                        />
-                    </span>
+                        >
+                            {/* 실제 눈에 보이는 세로 막대 */}
+                            <span
+                                style={{
+                                    width: 1,
+                                    height: '60%',
+                                    borderRadius: 999,
+                                    backgroundColor: 'rgba(0,0,0,0.15)',
+                                }}
+                            />
+                        </span>
+                    )}
                 </ThTag>
             ))}
         </RowTag>

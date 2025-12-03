@@ -52,6 +52,9 @@ export type UseTableParams<T> = {
     // 각 row의 key를 item 특정 필드 값으로 사용하기 위한 옵션
     // 예: rowKeyField="id" -> item["id"]가 key로 사용됨 (없으면 rowIndex로 fallback)
     rowKeyField?: string;
+
+    // 컬럼 리사이징 및 드래그앤드롭 비활성화 (모바일 등에서 사용)
+    disableColumnInteractions?: boolean;
 };
 
 export type UseTableResult<T> = {
@@ -89,6 +92,9 @@ export type UseTableResult<T> = {
     // 컬럼 노출 상태
     visibleColumnKeys: string[];
     setVisibleColumnKeys: (keys: string[]) => void;
+
+    // 컬럼 상호작용 비활성화 플래그
+    disableColumnInteractions: boolean;
 };
 
 /* =========================
@@ -129,6 +135,7 @@ export const useTable = <T,>({
     containerPaddingPx = 0,
     containerWidth,
     rowKeyField,
+    disableColumnInteractions = false,
 }: UseTableParams<T> & { containerWidth: number }): UseTableResult<T> => {
     // leaf 컬럼으로 평탄화
     const leafColumns = useMemo(
@@ -370,6 +377,7 @@ export const useTable = <T,>({
         reorderColumn,
         visibleColumnKeys,
         setVisibleColumnKeys,
+        disableColumnInteractions,
     };
 };
 
@@ -399,6 +407,7 @@ const TableInner = <T,>({
     style,
     children,
     rowKeyField,
+    disableColumnInteractions = false,
     ...rest
 }: UseTableParams<T> & React.HTMLAttributes<HTMLDivElement>) => {
     const wrapperRef = useRef<HTMLDivElement | null>(null);
@@ -429,6 +438,7 @@ const TableInner = <T,>({
         containerPaddingPx,
         containerWidth,
         rowKeyField,
+        disableColumnInteractions,
     });
 
     const value: TableContextValue<T> = { state, data, columns };

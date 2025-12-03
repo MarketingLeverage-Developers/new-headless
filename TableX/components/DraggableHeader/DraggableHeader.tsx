@@ -8,7 +8,7 @@ type DraggableHeaderProps = {
 
 const DraggableHeader: React.FC<DraggableHeaderProps> = ({ columnKey, children }) => {
     const { state } = useTableContext<unknown>();
-    const { reorderColumn } = state;
+    const { reorderColumn, disableColumnInteractions } = state;
 
     const handleDragStart: React.DragEventHandler<HTMLDivElement> = (e) => {
         e.dataTransfer.effectAllowed = 'move';
@@ -30,12 +30,13 @@ const DraggableHeader: React.FC<DraggableHeaderProps> = ({ columnKey, children }
 
     return (
         <div
-            draggable
-            onDragStart={handleDragStart}
-            onDragOver={handleDragOver}
-            onDrop={handleDrop}
+            draggable={!disableColumnInteractions}
+            data-column-key={columnKey}
+            onDragStart={!disableColumnInteractions ? handleDragStart : undefined}
+            onDragOver={!disableColumnInteractions ? handleDragOver : undefined}
+            onDrop={!disableColumnInteractions ? handleDrop : undefined}
             style={{
-                cursor: 'grab',
+                cursor: disableColumnInteractions ? 'default' : 'grab',
             }}
         >
             {children}
