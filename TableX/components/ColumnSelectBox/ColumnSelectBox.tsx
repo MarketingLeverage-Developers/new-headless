@@ -3,7 +3,6 @@ import type { Column } from '@/shared/headless/TableX/Table';
 import { useTableContext } from '@/shared/headless/TableX/Table';
 import Dropdown from '@/shared/headless/Dropdown/Dropdown';
 import ManySelect from '@/shared/headless/ManySelect/ManySelect';
-import { FaGear } from 'react-icons/fa6';
 import classNames from 'classnames';
 
 type ColumnSelectBoxProps = {
@@ -72,7 +71,7 @@ const ColumnSelectBox = <T,>({
                         setVisibleColumnKeys(next);
                     }}
                 >
-                    <Dropdown.Content className={contentClassName} offset={8} placement="bottom-end">
+                    <Dropdown.Content className={contentClassName} offset={8} placement="bottom-start">
                         {orderedColumns.map((item) => {
                             const key = String(item.key);
 
@@ -86,9 +85,7 @@ const ColumnSelectBox = <T,>({
                         })}
                     </Dropdown.Content>
 
-                    <Dropdown.Trigger className={triggerClassName}>
-                        <FaGear size={20} />
-                    </Dropdown.Trigger>
+                    <Dropdown.Trigger className={triggerClassName}>테이블 컬럼</Dropdown.Trigger>
                 </ManySelect>
             </Dropdown>
         </div>
