@@ -5,14 +5,15 @@
     width: 100%;
     height: 100%;
 
-    backdrop-filter: blur(6px);
-    -webkit-backdrop-filter: blur(6px);
+    /* use CSS variables from theme.scss */
+    background-color: var(--BackdropColor);
+    backdrop-filter: blur(var(--BackdropBlur));
+    -webkit-backdrop-filter: blur(var(--BackdropWebkitBlur));
 
-    background-color: rgba(0, 0, 0, 0.4); /* 기본값: 다크톤 반투명 */
     z-index: 999;
 
     transform-origin: top left;
-    transition: opacity 0.3s ease, transform 0.3s ease;
+    transition: opacity 0.3s ease, transform 0.3s ease, background-color 0.25s;
 
     &.Closed {
         opacity: 0;
@@ -21,23 +22,5 @@
 
     &.Open {
         opacity: 1;
-    }
-}
-
-/* 라이트 모드일 때 (밝은 배경이라 살짝 하얗게) */
-@media (prefers-color-scheme: dark) {
-    .Backdrop {
-        background-color: rgba(255, 255, 255, 0.3);
-        backdrop-filter: blur(8px);
-        -webkit-backdrop-filter: blur(8px);
-    }
-}
-
-/* 다크 모드일 때 (더 어두운 오버레이) */
-@media (prefers-color-scheme: light) {
-    .Backdrop {
-        background-color: rgba(0, 0, 0, 0.6);
-        backdrop-filter: blur(5px);
-        -webkit-backdrop-filter: blur(5px);
     }
 }
