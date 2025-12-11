@@ -1,14 +1,12 @@
-// Table.View.tsx
+// TableX/components/View/View.tsx
 import React from 'react';
 import { useTableContext } from '../../Table';
 
 type TableViewProps = React.HTMLAttributes<HTMLTableElement>;
 
 const TableView = React.forwardRef<HTMLTableElement, TableViewProps>(({ style, ...rest }, ref) => {
-    // ✅ Table 컨텍스트에서 state 가져오기
     const { state } = useTableContext<any>();
 
-    // ✅ columnRow 기준으로 total width 계산
     const totalTableWidth = state.columnRow.columns.reduce((sum, col) => sum + col.width, 0);
 
     return (
@@ -17,7 +15,10 @@ const TableView = React.forwardRef<HTMLTableElement, TableViewProps>(({ style, .
             ref={ref}
             style={{
                 tableLayout: 'fixed',
-                width: `${totalTableWidth}px`,
+                // ✅ 화면(컨테이너) 가로를 항상 100% 채우기
+                width: '100%',
+                // ✅ 컬럼 전체 너비보다 더 좁아지지는 않게 보장
+                minWidth: `${totalTableWidth}px`,
                 whiteSpace: 'normal',
                 overflowWrap: 'anywhere',
                 ...style,
