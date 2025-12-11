@@ -6,8 +6,8 @@ export const ColGroup: React.FC<React.HTMLAttributes<HTMLTableColElement>> = (pr
     const { state } = useTableContext();
     return (
         <colgroup>
-            {state.columnRow.columns.map((_, i) => (
-                <col key={`col-${i}`} style={state.getColStyle(i)} {...props} />
+            {state.columnRow.columns.map((col) => (
+                <col key={`col-${col.key}`} style={state.getColStyle(col.key)} {...props} />
             ))}
         </colgroup>
     );

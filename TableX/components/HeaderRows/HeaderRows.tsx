@@ -18,17 +18,19 @@ export const HeaderRows: React.FC<HeaderRowsProps> = ({ height, RowComponent, Th
     const RowTag = RowComponent ?? DefaultRow;
     const ThTag = ThComponent ?? DefaultTh;
 
-    const handleMouseDown = (colIndex: number) => (event: React.MouseEvent<HTMLSpanElement>) => {
+    // ✅ key 기반 리사이즈
+    const handleMouseDown = (colKey: string) => (event: React.MouseEvent<HTMLSpanElement>) => {
         event.preventDefault();
         event.stopPropagation();
 
+        const currentCol = state.columnRow.columns.find((c) => c.key === colKey);
+        const startWidth = currentCol?.width ?? 0;
         const startX = event.clientX;
-        const startWidth = state.columnRow.columns[colIndex]?.width ?? 0;
 
         const handleMouseMove = (moveEvent: MouseEvent) => {
             const deltaX = moveEvent.clientX - startX;
             const nextWidth = startWidth + deltaX;
-            state.resizeColumn(colIndex, nextWidth);
+            state.resizeColumn(colKey, nextWidth);
         };
 
         const handleMouseUp = () => {
@@ -47,11 +49,11 @@ export const HeaderRows: React.FC<HeaderRowsProps> = ({ height, RowComponent, Th
 
     return (
         <RowTag {...rest} style={rowStyle}>
-            {state.columnRow.columns.map((col, i) => (
+            {state.columnRow.columns.map((col) => (
                 <ThTag
-                    key={`c-${col.key}-${i}`}
+                    key={`c-${col.key}`}
                     style={{
-                        ...state.getColStyle(i),
+                        ...state.getColStyle(col.key),
                         position: 'relative',
                     }}
                 >
@@ -60,7 +62,7 @@ export const HeaderRows: React.FC<HeaderRowsProps> = ({ height, RowComponent, Th
                     {/* 오른쪽 리사이즈 핸들 영역 - disableColumnInteractions가 false일 때만 렌더링 */}
                     {!state.disableColumnInteractions && (
                         <span
-                            onMouseDown={handleMouseDown(i)}
+                            onMouseDown={handleMouseDown(col.key)}
                             style={{
                                 position: 'absolute',
                                 top: 4,

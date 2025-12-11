@@ -55,6 +55,9 @@ export type UseTableParams<T> = {
 
     // 컬럼 리사이징 및 드래그앤드롭 비활성화 (모바일 등에서 사용)
     disableColumnInteractions?: boolean;
+
+    // 이 테이블 설정을 localStorage 에 영구 저장하기 위한 키
+    storageKey?: string;
 };
 
 export type UseTableResult<T> = {
@@ -82,8 +85,10 @@ export type UseTableResult<T> = {
             render: (item: T, rowIndex: number) => React.ReactElement;
         }[];
     }[];
-    getColStyle: (colIndex: number) => React.CSSProperties;
-    resizeColumn: (colIndex: number, width: number) => void;
+
+    // ✅ 이제 colIndex가 아니라 colKey 기준
+    getColStyle: (colKey: string) => React.CSSProperties;
+    resizeColumn: (colKey: string, width: number) => void;
 
     // 컬럼 순서 + 재배열
     columnOrder: string[];
@@ -102,6 +107,66 @@ export type UseTableResult<T> = {
    ========================= */
 
 const MIN_COL_WIDTH = 80;
+
+// localStorage 에 저장되는 테이블 상태
+type PersistedTableState = {
+    columnWidths: Record<string, number>;
+    columnOrder: string[];
+    visibleColumnKeys: string[];
+};
+
+const loadPersistedTableState = (storageKey?: string): PersistedTableState | null => {
+    if (!storageKey) return null;
+    if (typeof window === 'undefined') return null;
+
+    try {
+        const raw = window.localStorage.getItem(storageKey);
+        if (!raw) return null;
+
+        const parsed = JSON.parse(raw) as unknown;
+        if (!parsed || typeof parsed !== 'object') return null;
+
+        const obj = parsed as Partial<PersistedTableState>;
+
+        const columnWidths: Record<string, number> = {};
+        if (obj.columnWidths && typeof obj.columnWidths === 'object' && !Array.isArray(obj.columnWidths)) {
+            Object.entries(obj.columnWidths).forEach(([k, v]) => {
+                if (typeof v === 'number') {
+                    columnWidths[k] = v;
+                }
+            });
+        }
+
+        const columnOrder = Array.isArray(obj.columnOrder) ? obj.columnOrder.map((k) => String(k)) : [];
+        const visibleColumnKeys = Array.isArray(obj.visibleColumnKeys)
+            ? obj.visibleColumnKeys.map((k) => String(k))
+            : [];
+
+        return {
+            columnWidths,
+            columnOrder,
+            visibleColumnKeys,
+        };
+    } catch {
+        return null;
+    }
+};
+
+const savePersistedTableState = (storageKey: string, state: PersistedTableState) => {
+    if (typeof window === 'undefined') return;
+
+    try {
+        const payload: PersistedTableState = {
+            columnWidths: state.columnWidths,
+            columnOrder: state.columnOrder,
+            visibleColumnKeys: state.visibleColumnKeys,
+        };
+
+        window.localStorage.setItem(storageKey, JSON.stringify(payload));
+    } catch {
+        // ignore
+    }
+};
 
 const toNumberPx = (w: number | string | undefined, fallback: number, containerW: number) => {
     if (typeof w === 'number') return w;
@@ -136,6 +201,7 @@ export const useTable = <T,>({
     containerWidth,
     rowKeyField,
     disableColumnInteractions = false,
+    storageKey,
 }: UseTableParams<T> & { containerWidth: number }): UseTableResult<T> => {
     // leaf 컬럼으로 평탄화
     const leafColumns = useMemo(
@@ -167,34 +233,63 @@ export const useTable = <T,>({
         [leafColumns, defaultColWidth, innerWidth]
     );
 
-    const [columnWidths, setColumnWidths] = useState<number[]>([]);
+    const leafIndexByKey = useMemo(() => {
+        const map = new Map<string, number>();
+        leafColumns.forEach((col, idx) => {
+            map.set(col.key, idx);
+        });
+        return map;
+    }, [leafColumns]);
 
-    // 컬럼 순서 상태
-    const [columnOrder, setColumnOrder] = useState<string[]>(() => leafColumns.map((c) => c.key));
+    // 최초 1회 localStorage 로딩
+    const persistedRef = useRef<PersistedTableState | null | undefined>(undefined);
+    if (persistedRef.current === undefined) {
+        persistedRef.current = loadPersistedTableState(storageKey);
+    }
+    const persisted = persistedRef.current;
 
-    // 컬럼 노출 상태 (기본: 모든 컬럼 ON)
-    const [visibleColumnKeys, setVisibleColumnKeys] = useState<string[]>(() => leafColumns.map((c) => c.key));
+    const [columnWidths, setColumnWidths] = useState<Record<string, number>>(() => persisted?.columnWidths ?? {});
 
-    // leafColumns 변경 시, width / order / visible 동기화
+    const [columnOrder, setColumnOrder] = useState<string[]>(() => {
+        if (persisted?.columnOrder && persisted.columnOrder.length > 0) {
+            return persisted.columnOrder;
+        }
+        return leafColumns.map((c) => c.key);
+    });
+
+    const [visibleColumnKeys, setVisibleColumnKeys] = useState<string[]>(() => {
+        if (persisted?.visibleColumnKeys && persisted.visibleColumnKeys.length > 0) {
+            return persisted.visibleColumnKeys;
+        }
+        return leafColumns.map((c) => c.key);
+    });
+
+    // leafColumns 변경 시 width / order / visible 동기화
     useEffect(() => {
+        // width: 새로 생긴 컬럼만 기본값 채우고, 사라진 컬럼은 정리
         setColumnWidths((prev) => {
-            if (prev.length === leafColumns.length) {
-                return prev;
-            }
+            const next: Record<string, number> = { ...prev };
+            const leafKeySet = new Set(leafColumns.map((c) => c.key));
 
-            const next = leafColumns.map((_col, idx) => {
-                if (idx < prev.length && typeof prev[idx] === 'number' && prev[idx] > 0) {
-                    return prev[idx];
+            leafColumns.forEach((col, idx) => {
+                const key = col.key;
+                if (typeof next[key] !== 'number' || next[key] <= 0) {
+                    const base = baseLeafWidthsPx[idx];
+                    const w = Number.isFinite(base) ? base : defaultColWidth;
+                    next[key] = w;
                 }
+            });
 
-                const base = baseLeafWidthsPx[idx];
-                return Number.isFinite(base) ? base : defaultColWidth;
+            Object.keys(next).forEach((key) => {
+                if (!leafKeySet.has(key)) {
+                    delete next[key];
+                }
             });
 
             return next;
         });
 
-        // 순서 동기화
+        // 순서 동기화 (기존 순서 유지 + 새 컬럼 뒤에 추가)
         setColumnOrder((prev) => {
             const leafKeys = leafColumns.map((c) => c.key);
             const next: string[] = [];
@@ -210,30 +305,39 @@ export const useTable = <T,>({
             return next;
         });
 
-        // 노출 상태 동기화 (기존에 보이던 컬럼은 유지, 새 컬럼은 자동 ON)
+        // 노출 상태 동기화
+        // - 기존 visible 에 있던 컬럼 중, 여전히 존재하는 것만 유지
+        // - prev가 완전히 비어 있는 경우(진짜 초기)에는 전체 ON
         setVisibleColumnKeys((prev) => {
             const leafKeys = leafColumns.map((c) => c.key);
-            const next: string[] = [];
+            const leafKeySet = new Set(leafKeys);
+            const filtered = prev.filter((key) => leafKeySet.has(key));
 
-            prev.forEach((key) => {
-                if (leafKeys.includes(key)) next.push(key);
-            });
+            if (filtered.length === 0) {
+                return leafKeys;
+            }
 
-            leafKeys.forEach((key) => {
-                if (!next.includes(key)) next.push(key);
-            });
-
-            return next;
+            return filtered;
         });
     }, [leafColumns, baseLeafWidthsPx, defaultColWidth]);
 
-    const resizeColumn = (colIndex: number, width: number) => {
-        setColumnWidths((prev) => {
-            if (colIndex < 0 || colIndex >= prev.length) return prev;
+    // 상태 변경시 localStorage 저장
+    useEffect(() => {
+        if (!storageKey) return;
+        if (!leafColumns.length) return;
 
-            const next = [...prev];
+        savePersistedTableState(storageKey, {
+            columnWidths,
+            columnOrder,
+            visibleColumnKeys,
+        });
+    }, [storageKey, columnWidths, columnOrder, visibleColumnKeys, leafColumns.length]);
+
+    const resizeColumn = (colKey: string, width: number) => {
+        setColumnWidths((prev) => {
+            const next = { ...prev };
             const clamped = Math.max(MIN_COL_WIDTH, width);
-            next[colIndex] = clamped;
+            next[colKey] = clamped;
             return next;
         });
     };
@@ -263,24 +367,23 @@ export const useTable = <T,>({
 
     // 1단 헤더: "보이는" 컬럼만
     const columnRow = useMemo(() => {
-        const cols = orderedLeafColumns;
-
-        const headerColumns = cols.reduce<
+        const headerColumns = orderedLeafColumns.reduce<
             {
                 key: string;
                 render: (key: string, data?: T[]) => React.ReactElement;
                 width: number;
             }[]
-        >((acc, c, idx) => {
-            if (!visibleColumnKeys.includes(c.key)) return acc;
+        >((acc, col) => {
+            if (!visibleColumnKeys.includes(col.key)) return acc;
 
-            const stored = columnWidths[idx];
-            const base = baseLeafWidthsPx[idx] ?? defaultColWidth;
+            const leafIdx = leafIndexByKey.get(col.key) ?? 0;
+            const base = baseLeafWidthsPx[leafIdx] ?? defaultColWidth;
+            const stored = columnWidths[col.key];
             const width = typeof stored === 'number' && stored > 0 ? stored : base;
 
             acc.push({
-                key: c.key,
-                render: () => c.header(c.key, data),
+                key: col.key,
+                render: () => col.header(col.key, data),
                 width: Math.round(width),
             });
 
@@ -291,7 +394,7 @@ export const useTable = <T,>({
             key: 'column',
             columns: headerColumns,
         };
-    }, [orderedLeafColumns, columnWidths, baseLeafWidthsPx, data, defaultColWidth, visibleColumnKeys]);
+    }, [orderedLeafColumns, visibleColumnKeys, columnWidths, leafIndexByKey, baseLeafWidthsPx, data, defaultColWidth]);
 
     // 그룹 헤더: child 기준 colSpan, hidden 컬럼은 제외
     const groupColumnRow = useMemo(() => {
@@ -323,8 +426,6 @@ export const useTable = <T,>({
     const rows = useMemo(
         () =>
             data.map((item, rowIndex) => {
-                // rowKeyField가 주어졌으면 item[rowKeyField]를 우선 key로 사용
-                // 값이 없거나 string/number가 아니면 rowIndex 기반 fallback
                 const rawKey = rowKeyField ? (item as Record<string, unknown>)[rowKeyField] : undefined;
 
                 const keyValue =
@@ -344,8 +445,9 @@ export const useTable = <T,>({
         [data, orderedLeafColumns, visibleColumnKeys, rowKeyField]
     );
 
-    const getColStyle = (colIndex: number): React.CSSProperties => {
-        const w = columnRow.columns[colIndex]?.width ?? defaultColWidth;
+    const getColStyle = (colKey: string): React.CSSProperties => {
+        const col = columnRow.columns.find((c) => c.key === colKey);
+        const w = col?.width ?? defaultColWidth;
         return { width: `${w}px` };
     };
 
@@ -408,6 +510,7 @@ const TableInner = <T,>({
     children,
     rowKeyField,
     disableColumnInteractions = false,
+    storageKey,
     ...rest
 }: UseTableParams<T> & React.HTMLAttributes<HTMLDivElement>) => {
     const wrapperRef = useRef<HTMLDivElement | null>(null);
@@ -439,6 +542,7 @@ const TableInner = <T,>({
         containerWidth,
         rowKeyField,
         disableColumnInteractions,
+        storageKey,
     });
 
     const value: TableContextValue<T> = { state, data, columns };
