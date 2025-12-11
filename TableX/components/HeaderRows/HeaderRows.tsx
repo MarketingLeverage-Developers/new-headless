@@ -5,6 +5,7 @@ import { useTableContext } from '../../Table';
 import { Row as DefaultRow } from '../Row/Row';
 import { Th as DefaultTh } from '../Th/Th';
 import type { CSSLength } from '@/shared/types';
+import { getThemeColor } from '@/shared/utils/css/getThemeColor';
 
 type HeaderRowsProps = {
     height?: CSSLength;
@@ -83,7 +84,7 @@ export const HeaderRows: React.FC<HeaderRowsProps> = ({ height, RowComponent, Th
                                     width: 1,
                                     height: '60%',
                                     borderRadius: 999,
-                                    backgroundColor: 'rgba(0,0,0,0.15)',
+                                    backgroundColor: getThemeColor('Gray5'),
                                 }}
                             />
                         </span>
