@@ -189,35 +189,29 @@ const toNumberPx = (w: number | string | undefined, fallback: number, containerW
 };
 
 /**
- * ✅ leafKeys 기준으로 “현재 leaf들”의 순서를 보정하되,
- * ✅ leaf 밖 key는 절대 버리지 않고 그대로 보존하는 merge
+ * ✅ orderDesired(전체) 순서는 절대 건드리지 않고
+ * leafKeys 중 orderDesired에 없는 키만 “leafKeys 기준 자리”로 끼워 넣는다
  */
 const mergeOrderDesiredByLeafKeys = (prevDesired: string[], leafKeys: string[]) => {
     const desired = uniq(prevDesired.map(String));
-
-    // ✅ leafKeys 중 prevDesired에 없는 것만 "추가"한다 (기존 순서는 절대 건드리지 않음)
     const missing = leafKeys.filter((k) => !desired.includes(k));
     if (missing.length === 0) return desired;
 
-    // insertion helper: desired(전체 리스트) 안에서 이웃 기준으로 위치 찾기
     const findInsertIndex = (key: string, list: string[]) => {
         const idxInLeaf = leafKeys.indexOf(key);
 
-        // 왼쪽 이웃 중 list에 존재하는 첫 key 뒤에 삽입
         for (let i = idxInLeaf - 1; i >= 0; i -= 1) {
             const left = leafKeys[i];
             const pos = list.indexOf(left);
             if (pos !== -1) return pos + 1;
         }
 
-        // 오른쪽 이웃 중 list에 존재하는 첫 key 앞에 삽입
         for (let i = idxInLeaf + 1; i < leafKeys.length; i += 1) {
             const right = leafKeys[i];
             const pos = list.indexOf(right);
             if (pos !== -1) return pos;
         }
 
-        // 아무 이웃도 없으면 끝
         return list.length;
     };
 
@@ -297,9 +291,15 @@ export const useTable = <T,>({
         setPersisted(loadPersistedTableState(storageKey));
     }, [storageKey]);
 
-    const [columnWidths, setColumnWidths] = useState<Record<string, number>>(() => persisted?.columnWidths ?? {});
+    /**
+     * ✅ 핵심 변경: width도 "desired(전체)"를 별도로 들고 간다
+     * - schema가 아직 없어 leaf에서 빠져도 삭제하지 않음
+     * - 저장도 desired를 그대로 저장
+     */
+    const [columnWidthsDesired, setColumnWidthsDesired] = useState<Record<string, number>>(
+        () => persisted?.columnWidths ?? {}
+    );
 
-    // ✅ columnOrder도 visible처럼 “desired”로 들고 간다 (지연 컬럼 포함)
     const [columnOrderDesired, setColumnOrderDesired] = useState<string[]>(() => {
         if (persisted?.columnOrder && persisted.columnOrder.length > 0) return persisted.columnOrder;
         return leafKeys;
@@ -316,7 +316,6 @@ export const useTable = <T,>({
         knownSetRef.current = new Set(knownColumnKeys);
     }, [knownColumnKeys]);
 
-    // ✅ persisted 로드 반영
     useEffect(() => {
         if (!storageKey) return;
 
@@ -328,18 +327,12 @@ export const useTable = <T,>({
                 : leafKeys;
         const nextKnown = persisted?.knownColumnKeys ?? [];
 
-        setColumnWidths(nextWidths);
+        setColumnWidthsDesired(nextWidths);
         setColumnOrderDesired(uniq(nextOrder));
         setVisibleColumnKeysDesired(uniq(nextVisible));
         setKnownColumnKeys(uniq(nextKnown));
         knownSetRef.current = new Set(uniq(nextKnown));
     }, [persisted, storageKey, leafKeys]);
-
-    // ✅ 실제 렌더링에 쓰는 order는 desired ∩ leaf
-    const columnOrder = useMemo(
-        () => uniq(columnOrderDesired.filter((k) => leafKeySet.has(k))),
-        [columnOrderDesired, leafKeySet]
-    );
 
     const visibleColumnKeys = useMemo(
         () => uniq(visibleColumnKeysDesired.filter((k) => leafKeySet.has(k))),
@@ -358,52 +351,51 @@ export const useTable = <T,>({
         [leafKeySet]
     );
 
-    // ✅ leafKeys 변화 시 동기화 (중요: orderDesired에서 key를 “삭제”하지 않는다)
+    /**
+     * ✅ leaf 변경 시 동기화
+     * - known 누적
+     * - leaf에 새로 등장한 컬럼은 기본 width를 desired에 채워 넣음
+     * - leaf 밖 key width는 절대 삭제하지 않음 (서버 컬럼 보호)
+     * - orderDesired는 기존 순서 유지 + leaf에 없는 키 추가만 수행
+     */
     useEffect(() => {
         if (leafKeys.length === 0) return;
 
-        // known
         const knownSet = knownSetRef.current;
         const newKeys = leafKeys.filter((k) => !knownSet.has(k));
 
-        if (newKeys.length > 0) {
-            const nextKnown = new Set(knownSet);
-            newKeys.forEach((k) => nextKnown.add(k));
-            knownSetRef.current = nextKnown;
-            setKnownColumnKeys(Array.from(nextKnown));
-        }
+        const nextKnown = new Set(knownSet);
+        leafKeys.forEach((k) => nextKnown.add(k));
+        knownSetRef.current = nextKnown;
+        setKnownColumnKeys(Array.from(nextKnown));
 
-        // width
-        setColumnWidths((prev) => {
+        // ✅ width desired sync (leaf 밖 width 삭제 금지)
+        setColumnWidthsDesired((prev) => {
             const next: Record<string, number> = { ...prev };
 
             leafKeys.forEach((k) => {
                 const existing = next[k];
                 if (typeof existing !== 'number' || existing <= 0) {
                     const base = baseLeafWidthByKey.get(k) ?? defaultColWidth;
-                    next[k] = Number.isFinite(base) ? base : defaultColWidth;
+                    next[k] = Math.max(MIN_COL_WIDTH, Number.isFinite(base) ? base : defaultColWidth);
                 }
-            });
-
-            Object.keys(next).forEach((k) => {
-                if (!leafKeySet.has(k)) delete next[k];
             });
 
             return next;
         });
 
-        // ✅ orderDesired 보정 (leaf 밖 보존 + leaf 안 merge)
+        // ✅ order desired sync
         setColumnOrderDesired((prev) => mergeOrderDesiredByLeafKeys(prev, leafKeys));
 
-        // visible 신규 자동 ON
+        // ✅ 신규 컬럼 자동 ON
         setVisibleColumnKeysDesired((prevDesired) => {
             if (!prevDesired || prevDesired.length === 0) return leafKeys;
             if (newKeys.length > 0) return uniq([...prevDesired, ...newKeys]);
             return prevDesired;
         });
-    }, [leafKeys, leafKeySet, baseLeafWidthByKey, defaultColWidth]);
+    }, [leafKeys, baseLeafWidthByKey, defaultColWidth]);
 
-    // ✅ localStorage save
+    // ✅ localStorage 저장 (desired 전체를 저장)
     useEffect(() => {
         if (!storageKey) return;
 
@@ -413,28 +405,29 @@ export const useTable = <T,>({
         }
 
         savePersistedTableState(storageKey, {
-            columnWidths,
+            columnWidths: columnWidthsDesired,
             columnOrder: uniq(columnOrderDesired),
             visibleColumnKeys: uniq(visibleColumnKeysDesired),
             knownColumnKeys: uniq(knownColumnKeys),
         });
-    }, [storageKey, columnWidths, columnOrderDesired, visibleColumnKeysDesired, knownColumnKeys]);
+    }, [storageKey, columnWidthsDesired, columnOrderDesired, visibleColumnKeysDesired, knownColumnKeys]);
 
     const resizeColumn = (colKey: string, width: number) => {
-        setColumnWidths((prev) => {
+        setColumnWidthsDesired((prev) => {
             const next = { ...prev };
-            next[colKey] = Math.max(MIN_COL_WIDTH, width);
+            next[String(colKey)] = Math.max(MIN_COL_WIDTH, width);
             return next;
         });
     };
 
+    // ✅ orderedLeafColumns: leafKeys 기준 + orderDesired 적용
     const orderedLeafColumns = useMemo(() => {
         const colMap = new Map<string, ColumnType<T>>();
         leafColumns.forEach((c) => {
             if (!colMap.has(c.key)) colMap.set(c.key, c);
         });
 
-        const orderUnique = uniq(columnOrder);
+        const orderUnique = uniq(columnOrderDesired);
         const result: ColumnType<T>[] = [];
 
         orderUnique.forEach((k) => {
@@ -442,6 +435,7 @@ export const useTable = <T,>({
             if (c) result.push(c);
         });
 
+        // order에 없는 leaf는 뒤에 추가(안전망)
         leafKeys.forEach((k) => {
             if (!orderUnique.includes(k)) {
                 const c = colMap.get(k);
@@ -450,7 +444,7 @@ export const useTable = <T,>({
         });
 
         return result;
-    }, [leafColumns, leafKeys, columnOrder]);
+    }, [leafColumns, leafKeys, columnOrderDesired]);
 
     const columnRow = useMemo(() => {
         const headerColumns = orderedLeafColumns.reduce<
@@ -459,20 +453,20 @@ export const useTable = <T,>({
             if (!visibleColumnKeys.includes(col.key)) return acc;
 
             const base = baseLeafWidthByKey.get(col.key) ?? defaultColWidth;
-            const stored = columnWidths[col.key];
+            const stored = columnWidthsDesired[col.key];
             const width = typeof stored === 'number' && stored > 0 ? stored : base;
 
             acc.push({
                 key: col.key,
                 render: () => col.header(col.key, data),
-                width: Math.round(width),
+                width: Math.round(Math.max(MIN_COL_WIDTH, width)),
             });
 
             return acc;
         }, []);
 
         return { key: 'column', columns: headerColumns };
-    }, [orderedLeafColumns, visibleColumnKeys, baseLeafWidthByKey, defaultColWidth, columnWidths, data]);
+    }, [orderedLeafColumns, visibleColumnKeys, baseLeafWidthByKey, defaultColWidth, columnWidthsDesired, data]);
 
     const groupColumnRow = useMemo(() => {
         const visibleKeysSet = new Set(visibleColumnKeys);
@@ -529,25 +523,23 @@ export const useTable = <T,>({
         return { width: `${w}px` };
     };
 
-    // ✅ reorder도 “현재 leaf만” reorder 하고, leaf 밖 key는 그대로 둔다
     const reorderColumn = (fromKey: string, toKey: string) => {
-        setColumnOrderDesired((prevDesired) => {
-            if (fromKey === toKey) return prevDesired;
+        setColumnOrderDesired((prev) => {
+            const from = String(fromKey);
+            const to = String(toKey);
+            if (from === to) return prev;
 
-            const desiredUnique = uniq(prevDesired);
-            const preserved = desiredUnique.filter((k) => !leafKeySet.has(k));
-            const currentLeafOrder = desiredUnique.filter((k) => leafKeySet.has(k));
+            const prevUnique = uniq(prev);
+            const fromIndex = prevUnique.indexOf(from);
+            const toIndex = prevUnique.indexOf(to);
 
-            const fromIndex = currentLeafOrder.indexOf(fromKey);
-            const toIndex = currentLeafOrder.indexOf(toKey);
+            if (fromIndex === -1 || toIndex === -1) return prevUnique;
 
-            if (fromIndex === -1 || toIndex === -1) return prevDesired;
+            const next = [...prevUnique];
+            const [moved] = next.splice(fromIndex, 1);
+            next.splice(toIndex, 0, moved);
 
-            const nextLeaf = [...currentLeafOrder];
-            const [moved] = nextLeaf.splice(fromIndex, 1);
-            nextLeaf.splice(toIndex, 0, moved);
-
-            return uniq([...preserved, ...nextLeaf]);
+            return next;
         });
     };
 
@@ -557,7 +549,7 @@ export const useTable = <T,>({
         rows,
         getColStyle,
         resizeColumn,
-        columnOrder,
+        columnOrder: uniq(columnOrderDesired),
         reorderColumn,
         visibleColumnKeys,
         setVisibleColumnKeys,
