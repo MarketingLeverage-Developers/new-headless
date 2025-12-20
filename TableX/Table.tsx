@@ -106,7 +106,7 @@ type PersistedTableState = {
     knownColumnKeys: string[];
 };
 
-const uniq = (arr: string[]) => Array.from(new Set(arr));
+const uniq = (arr: string[]) => Array.from(new Set(arr.map(String)));
 const normalizeStringArray = (v: unknown): string[] => (Array.isArray(v) ? v.map((x) => String(x)) : []);
 
 const loadPersistedTableState = (storageKey?: string): PersistedTableState | null => {
@@ -146,12 +146,7 @@ const loadPersistedTableState = (storageKey?: string): PersistedTableState | nul
             return parsedKnown.length > 0 ? parsedKnown : legacyKnown;
         })();
 
-        return {
-            columnWidths,
-            columnOrder,
-            visibleColumnKeys,
-            knownColumnKeys,
-        };
+        return { columnWidths, columnOrder, visibleColumnKeys, knownColumnKeys };
     } catch {
         return null;
     }
@@ -159,7 +154,6 @@ const loadPersistedTableState = (storageKey?: string): PersistedTableState | nul
 
 const savePersistedTableState = (storageKey: string, state: PersistedTableState) => {
     if (typeof window === 'undefined') return;
-
     try {
         window.localStorage.setItem(storageKey, JSON.stringify(state));
     } catch {
@@ -189,10 +183,15 @@ const toNumberPx = (w: number | string | undefined, fallback: number, containerW
 };
 
 const mergeOrderByLeafKeys = (prevOrder: string[], leafKeys: string[]) => {
-    const prev = uniq(prevOrder.map(String));
+    const prev = uniq(prevOrder);
     if (leafKeys.length === 0) return prev;
 
-    const next = [...prev];
+    // 현재 존재하는 키만 유지
+    const leafSet = new Set(leafKeys);
+    const base = prev.filter((k) => leafSet.has(k));
+
+    // 없는 키(신규)는 leafKeys 기준으로 끼워넣기
+    const next = [...base];
 
     const findInsertIndex = (key: string) => {
         const idxInLeaf = leafKeys.indexOf(key);
@@ -278,13 +277,12 @@ export const useTable = <T,>({
 
     const [persisted, setPersisted] = useState<PersistedTableState | null>(() => loadPersistedTableState(storageKey));
 
-    const skipNextSaveRef = useRef(false);
+    // ✅ storageKey 변경 시 persisted 로드 (하지만 즉시 hydrate 하지 않음)
     useEffect(() => {
         if (!storageKey) {
             setPersisted(null);
             return;
         }
-        skipNextSaveRef.current = true;
         setPersisted(loadPersistedTableState(storageKey));
     }, [storageKey]);
 
@@ -293,19 +291,72 @@ export const useTable = <T,>({
         if (persisted?.columnOrder && persisted.columnOrder.length > 0) return persisted.columnOrder;
         return leafKeys;
     });
-
     const [visibleColumnKeysDesired, setVisibleColumnKeysDesired] = useState<string[]>(() => {
         if (persisted?.visibleColumnKeys && persisted.visibleColumnKeys.length > 0) return persisted.visibleColumnKeys;
         return leafKeys;
     });
-
     const [knownColumnKeys, setKnownColumnKeys] = useState<string[]>(() => persisted?.knownColumnKeys ?? []);
+
     const knownSetRef = useRef<Set<string>>(new Set(persisted?.knownColumnKeys ?? []));
     useEffect(() => {
         knownSetRef.current = new Set(knownColumnKeys);
     }, [knownColumnKeys]);
 
-    // ✅ “즉시 저장”을 위해 최신 상태를 ref로 들고있기
+    // ✅ “업체 바뀔 때” leafKeys가 안정화된 후 hydrate 하도록 대기 플래그
+    const pendingHydrationRef = useRef(false);
+    const hydratedRef = useRef(false);
+    const stableLeafKeysTimerRef = useRef<number | null>(null);
+
+    useEffect(() => {
+        // 업체 바뀔 때마다 hydrate 다시 해야 함
+        hydratedRef.current = false;
+        pendingHydrationRef.current = true;
+
+        if (stableLeafKeysTimerRef.current) {
+            window.clearTimeout(stableLeafKeysTimerRef.current);
+            stableLeafKeysTimerRef.current = null;
+        }
+    }, [storageKey]);
+
+    // ✅ leafKeys가 “안정화될 때까지” 기다렸다가, 그때 persisted로 hydrate 1회
+    useEffect(() => {
+        if (!storageKey) return;
+        if (!pendingHydrationRef.current) return;
+        if (hydratedRef.current) return;
+
+        if (stableLeafKeysTimerRef.current) {
+            window.clearTimeout(stableLeafKeysTimerRef.current);
+        }
+
+        // 60ms 동안 leafKeys가 또 바뀌지 않으면 “안정화”로 간주
+        stableLeafKeysTimerRef.current = window.setTimeout(() => {
+            stableLeafKeysTimerRef.current = null;
+
+            if (!storageKey) return;
+            if (hydratedRef.current) return;
+            if (!pendingHydrationRef.current) return;
+
+            const nextWidths = persisted?.columnWidths ?? {};
+            const nextOrder =
+                persisted?.columnOrder && persisted.columnOrder.length > 0 ? persisted.columnOrder : leafKeys;
+            const nextVisible =
+                persisted?.visibleColumnKeys && persisted.visibleColumnKeys.length > 0
+                    ? persisted.visibleColumnKeys
+                    : leafKeys;
+            const nextKnown = persisted?.knownColumnKeys ?? [];
+
+            setColumnWidths(nextWidths);
+            setColumnOrder(uniq(nextOrder));
+            setVisibleColumnKeysDesired(uniq(nextVisible));
+            setKnownColumnKeys(uniq(nextKnown));
+            knownSetRef.current = new Set(uniq(nextKnown));
+
+            hydratedRef.current = true;
+            pendingHydrationRef.current = false;
+        }, 60);
+    }, [storageKey, leafKeys, persisted]);
+
+    // ✅ 즉시 저장 ref
     const stateRef = useRef<PersistedTableState>({
         columnWidths,
         columnOrder,
@@ -324,7 +375,8 @@ export const useTable = <T,>({
 
     const persistNow = useCallback(() => {
         if (!storageKey) return;
-        if (skipNextSaveRef.current) return;
+        // ✅ 아직 업체 변경 직후 hydrate 대기 중이면 저장 금지 (중간 상태로 덮어쓰는 버그 방지)
+        if (pendingHydrationRef.current && !hydratedRef.current) return;
 
         const s = stateRef.current;
         savePersistedTableState(storageKey, {
@@ -334,29 +386,6 @@ export const useTable = <T,>({
             knownColumnKeys: uniq(s.knownColumnKeys),
         });
     }, [storageKey]);
-
-    useEffect(() => {
-        if (!storageKey) return;
-
-        const nextWidths = persisted?.columnWidths ?? {};
-        const nextOrder = persisted?.columnOrder && persisted.columnOrder.length > 0 ? persisted.columnOrder : leafKeys;
-        const nextVisible =
-            persisted?.visibleColumnKeys && persisted.visibleColumnKeys.length > 0
-                ? persisted.visibleColumnKeys
-                : leafKeys;
-        const nextKnown = persisted?.knownColumnKeys ?? [];
-
-        setColumnWidths(nextWidths);
-        setColumnOrder(uniq(nextOrder));
-        setVisibleColumnKeysDesired(uniq(nextVisible));
-        setKnownColumnKeys(uniq(nextKnown));
-        knownSetRef.current = new Set(uniq(nextKnown));
-
-        // ✅ 로드 직후에는 저장 막기 해제
-        queueMicrotask(() => {
-            skipNextSaveRef.current = false;
-        });
-    }, [persisted, storageKey, leafKeys]);
 
     const visibleColumnKeys = useMemo(
         () => uniq(visibleColumnKeysDesired.filter((k) => leafKeySet.has(k))),
@@ -371,11 +400,7 @@ export const useTable = <T,>({
                 const preserved = prevDesired.filter((k) => !leafKeySet.has(k));
                 const next = uniq([...preserved, ...nextKeys]);
 
-                // ✅ 즉시 저장
-                stateRef.current = {
-                    ...stateRef.current,
-                    visibleColumnKeys: next,
-                };
+                stateRef.current = { ...stateRef.current, visibleColumnKeys: next };
                 persistNow();
 
                 return next;
@@ -384,6 +409,7 @@ export const useTable = <T,>({
         [leafKeySet, persistNow]
     );
 
+    // ✅ leafKeys 변화는 “merge/sync”만
     useEffect(() => {
         if (leafKeys.length === 0) return;
 
@@ -395,7 +421,6 @@ export const useTable = <T,>({
         knownSetRef.current = nextKnown;
         setKnownColumnKeys(Array.from(nextKnown));
 
-        // width sync
         setColumnWidths((prev) => {
             const next: Record<string, number> = { ...prev };
 
@@ -407,19 +432,21 @@ export const useTable = <T,>({
                 }
             });
 
+            Object.keys(next).forEach((k) => {
+                if (!leafKeySet.has(k)) delete next[k];
+            });
+
             return next;
         });
 
-        // order sync
         setColumnOrder((prev) => mergeOrderByLeafKeys(prev, leafKeys));
 
-        // 신규 컬럼 자동 ON
         setVisibleColumnKeysDesired((prevDesired) => {
             if (!prevDesired || prevDesired.length === 0) return leafKeys;
             if (newKeys.length > 0) return uniq([...prevDesired, ...newKeys]);
             return prevDesired;
         });
-    }, [leafKeys, baseLeafWidthByKey, defaultColWidth]);
+    }, [leafKeys, leafKeySet, baseLeafWidthByKey, defaultColWidth]);
 
     const resizeColumn = useCallback(
         (colKey: string, width: number) => {
@@ -429,11 +456,7 @@ export const useTable = <T,>({
                 const next = { ...prev };
                 next[key] = Math.max(MIN_COL_WIDTH, width);
 
-                // ✅ 즉시 저장
-                stateRef.current = {
-                    ...stateRef.current,
-                    columnWidths: next,
-                };
+                stateRef.current = { ...stateRef.current, columnWidths: next };
                 persistNow();
 
                 return next;
@@ -460,11 +483,7 @@ export const useTable = <T,>({
                 const [moved] = next.splice(fromIndex, 1);
                 next.splice(toIndex, 0, moved);
 
-                // ✅ 즉시 저장
-                stateRef.current = {
-                    ...stateRef.current,
-                    columnOrder: next,
-                };
+                stateRef.current = { ...stateRef.current, columnOrder: next };
                 persistNow();
 
                 return next;
@@ -504,12 +523,12 @@ export const useTable = <T,>({
 
             const base = baseLeafWidthByKey.get(col.key) ?? defaultColWidth;
             const stored = columnWidths[col.key];
-            const width = typeof stored === 'number' && stored > 0 ? stored : base;
+            const w = typeof stored === 'number' && stored > 0 ? stored : base;
 
             acc.push({
                 key: col.key,
                 render: () => col.header(col.key, data),
-                width: Math.round(Math.max(MIN_COL_WIDTH, width)),
+                width: Math.round(Math.max(MIN_COL_WIDTH, w)),
             });
 
             return acc;
