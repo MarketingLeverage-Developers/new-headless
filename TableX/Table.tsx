@@ -14,6 +14,7 @@ import {
 } from './components';
 import ColumnSelectBox from './components/ColumnSelectBox/ColumnSelectBox';
 import View from './components/View/View';
+import SearchColumnSelectBox from './components/SearchColumnSelectBox/SearchColumnSelectBox';
 
 export {
     RowDetailsProvider,
@@ -721,6 +722,7 @@ type TableStatics = {
     Th: typeof Th;
     ColumnSelectBox: typeof ColumnSelectBox;
     View: typeof View;
+    SearchColumnSelectBox: typeof SearchColumnSelectBox;
 };
 
 const Table = TableInner as typeof TableInner & TableStatics;
@@ -736,7 +738,8 @@ Table.Row = Row;
 Table.Details = Details;
 Table.Toggle = Toggle;
 Table.Th = Th;
-Table.ColumnSelectBox = ColumnSelectBox;
 Table.View = View;
+Table.ColumnSelectBox = ColumnSelectBox;
+Table.SearchColumnSelectBox = SearchColumnSelectBox;
 
 export default Table;
