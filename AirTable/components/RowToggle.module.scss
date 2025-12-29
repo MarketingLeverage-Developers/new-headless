@@ -1,0 +1,33 @@
+.toggle {
+    width: 24px;
+    height: 24px;
+    padding: 0;
+
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+
+    border: none;
+    background: transparent;
+    cursor: pointer;
+
+    border-radius: 6px;
+
+    &:hover {
+        background: rgba(0, 0, 0, 0.04);
+    }
+
+    &:active {
+        transform: translateY(1px);
+    }
+}
+
+.icon {
+    font-size: 16px;
+    transition: transform 200ms ease;
+    transform: rotate(0deg); // 닫힘: 오른쪽
+}
+
+.open .icon {
+    transform: rotate(90deg); // 열림: 아래쪽
+}

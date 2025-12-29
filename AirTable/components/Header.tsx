@@ -26,7 +26,7 @@ export const Header = <T,>({ className, headerCellClassName, resizeHandleClassNa
     } = useAirTableContext<T>();
 
     const { data, defaultColWidth = 160 } = props;
-    const { columnRow, startColumnDrag, resizeColumn } = state;
+    const { columnRow, startColumnDrag } = state;
 
     useEffect(() => {
         const el = scrollRef.current;
@@ -53,32 +53,6 @@ export const Header = <T,>({ className, headerCellClassName, resizeHandleClassNa
         },
         [getXInGrid, widthByKey, defaultColWidth, resizeRef]
     );
-
-    useEffect(() => {
-        const handleMove = (ev: MouseEvent) => {
-            const r = resizeRef.current;
-            if (!r) return;
-
-            const x = getXInGrid(ev.clientX);
-            const diff = x - r.startX;
-            const nextWidth = Math.max(MIN_COL_WIDTH, r.startWidth + diff);
-
-            resizeColumn(r.key, nextWidth);
-        };
-
-        const handleUp = () => {
-            if (!resizeRef.current) return;
-            resizeRef.current = null;
-        };
-
-        window.addEventListener('mousemove', handleMove);
-        window.addEventListener('mouseup', handleUp);
-
-        return () => {
-            window.removeEventListener('mousemove', handleMove);
-            window.removeEventListener('mouseup', handleUp);
-        };
-    }, [getXInGrid, resizeColumn, resizeRef]);
 
     const handleHeaderMouseDown = (colKey: string) => (e: React.MouseEvent<HTMLDivElement>) => {
         if (resizeRef.current) return;
@@ -136,19 +110,35 @@ export const Header = <T,>({ className, headerCellClassName, resizeHandleClassNa
                         >
                             {col.render(colKey, data)}
 
+                            {/* ✅✅✅ 여기만 바뀜: 리사이즈 핸들이 "보이게" */}
                             <div
                                 className={resizeHandleClassName}
                                 style={{
                                     position: 'absolute',
                                     top: 0,
                                     right: 0,
-                                    width: 8,
+                                    width: 10,
                                     height: '100%',
                                     cursor: 'col-resize',
-                                    zIndex: 20,
+                                    zIndex: 30,
+
+                                    // ✅ 눈에 보이게 하는 핵심 스타일
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
                                 }}
                                 onMouseDown={handleResizeMouseDown(colKey)}
-                            />
+                            >
+                                {/* ✅ 손잡이 라인 UI */}
+                                <div
+                                    style={{
+                                        width: 1,
+                                        height: '50%',
+                                        borderRadius: 2,
+                                        background: 'rgba(0,0,0,0.18)',
+                                    }}
+                                />
+                            </div>
                         </div>
                     );
                 })}

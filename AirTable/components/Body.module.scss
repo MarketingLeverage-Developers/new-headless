@@ -1,0 +1,16 @@
+.detailRoot {
+    opacity: 0;
+    transform: translateY(-6px);
+
+    transition: opacity 220ms ease, transform 220ms ease;
+    will-change: opacity, transform;
+}
+
+.detailOpen {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.detailInner {
+    width: 100%;
+}

@@ -1,8 +1,11 @@
 import React from 'react';
 
-type ContainerProps = {
-    className?: string;
+type ContainerProps = React.HTMLAttributes<HTMLDivElement> & {
     children: React.ReactNode;
 };
 
-export const Container = ({ className, children }: ContainerProps) => <div className={className}>{children}</div>;
+export const Container = ({ className, children, ...rest }: ContainerProps) => (
+    <div className={className} {...rest}>
+        {children}
+    </div>
+);

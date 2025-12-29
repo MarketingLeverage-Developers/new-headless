@@ -4,15 +4,23 @@ import { Header } from './components/Header';
 import { Body } from './components/Body';
 import { Ghost } from './components/Ghost';
 import { ColumnVisibilityControl } from './components/ColumnVisibilityControl';
+import RowToggle from './components/RowToggle';
 
 /* =========================
    Types
    ========================= */
 
+export type CellRenderMeta<T> = {
+    rowKey: string;
+    ri: number;
+    toggleRowExpanded: (rowKey: string) => void;
+    isRowExpanded: (rowKey: string) => boolean;
+};
+
 export interface ColumnType<T> {
     key: string;
     label?: string;
-    render: (item: T, index: number) => React.ReactElement;
+    render: (item: T, index: number, meta: CellRenderMeta<T>) => React.ReactElement;
     header: (key: string, data: T[]) => React.ReactElement;
     width?: number | string;
 }
@@ -21,7 +29,7 @@ export type Column<T> = {
     key: string;
     label?: string;
     header: (key: string, data: T[]) => React.ReactElement;
-    render?: (item: T, index: number) => React.ReactElement;
+    render: (item: T, index: number, meta: CellRenderMeta<T>) => React.ReactElement;
     width?: number | string;
     children?: ColumnType<T>[];
 };
@@ -32,6 +40,7 @@ export type AirTableProps<T> = {
     rowKeyField?: keyof T;
     defaultColWidth?: number;
     detailRenderer?: (params: { row: T; ri: number }) => React.ReactNode;
+    getRowCanExpand?: (row: T, ri: number) => boolean;
     getRowStyle?: (row: T, index: number) => { backgroundColor?: string };
     storageKey?: string;
     style?: React.CSSProperties;
@@ -90,7 +99,7 @@ export type UseTableResult<T> = {
         item: T;
         cells: {
             key: string;
-            render: (item: T, rowIndex: number) => React.ReactElement;
+            render: (item: T, rowIndex: number, meta: CellRenderMeta<T>) => React.ReactElement;
         }[];
     }[];
 
@@ -251,8 +260,11 @@ const useTable = <T,>({
 
                 const render =
                     col.render ??
-                    (((_it: T, _idx: number) => null) as unknown as (item: T, index: number) => React.ReactElement);
-
+                    (((_it: T, _idx: number, _meta: CellRenderMeta<T>) => null) as unknown as (
+                        item: T,
+                        index: number,
+                        meta: CellRenderMeta<T>
+                    ) => React.ReactElement);
                 return [
                     {
                         key: String(col.key),
@@ -517,7 +529,7 @@ const useTable = <T,>({
                         .filter((leaf) => visibleColumnKeys.includes(leaf.key))
                         .map((leaf) => ({
                             key: leaf.key,
-                            render: (it: T, idx: number) => leaf.render(it, idx),
+                            render: (it: T, idx: number, meta: CellRenderMeta<T>) => leaf.render(it, idx, meta),
                         })),
                 };
             }),
@@ -580,6 +592,10 @@ type AirTableContextValue<T> = {
 
     getRange: () => { top: number; bottom: number; left: number; right: number } | null;
     isCellSelected: (ri: number, ci: number) => boolean;
+
+    expandedRowKeys: Set<string>;
+    toggleRowExpanded: (rowKey: string) => void;
+    isRowExpanded: (rowKey: string) => boolean;
 };
 
 type Internal = AirTableContextValue<unknown>;
@@ -596,13 +612,14 @@ export const useAirTableContext = <T,>(): AirTableContextValue<T> => {
    AirTable Component
    ========================= */
 
-const AirTableInner = <T extends unknown>({
+const AirTableInner = <T,>({
     data,
     columns,
     rowKeyField,
     defaultColWidth = 160,
     detailRenderer,
     getRowStyle,
+    getRowCanExpand,
     storageKey,
     style,
     children,
@@ -612,6 +629,7 @@ const AirTableInner = <T extends unknown>({
     const tableAreaRef = useRef<HTMLDivElement | null>(null);
 
     const [containerWidth, setContainerWidth] = useState(0);
+    const [expandedRowKeys, setExpandedRowKeys] = useState<Set<string>>(() => new Set());
 
     useEffect(() => {
         const el = wrapperRef.current;
@@ -809,6 +827,17 @@ const AirTableInner = <T extends unknown>({
         [getRange]
     );
 
+    const toggleRowExpanded = useCallback((rowKey: string) => {
+        setExpandedRowKeys((prev) => {
+            const next = new Set(prev);
+            if (next.has(rowKey)) next.delete(rowKey);
+            else next.add(rowKey);
+            return next;
+        });
+    }, []);
+
+    const isRowExpanded = useCallback((rowKey: string) => expandedRowKeys.has(rowKey), [expandedRowKeys]);
+
     /* =========================
        ✅✅✅ Auto Scroll (selection / column drag)
        ========================= */
@@ -885,12 +914,40 @@ const AirTableInner = <T extends unknown>({
     }, [getXInGrid, resizeColumn]);
 
     /* =========================
-       ✅ 컬럼 이동 전역 리스너
-       ========================= */
+   ✅ 컬럼 이동 전역 리스너
+   ========================= */
 
     useEffect(() => {
         const draggingKey = drag.draggingKey;
         if (!draggingKey) return;
+
+        const finalize = () => {
+            if (resizeRef.current) return;
+
+            const dragging = drag.draggingKey;
+            const final = drag.previewOrder;
+
+            // draggingKey가 살아있는 상태에서만 종료 처리
+            if (!dragging) return;
+
+            if (!final || final.length === 0) {
+                setPreviewOrder(null);
+                endColumnDrag();
+                setGhost(null);
+                return;
+            }
+
+            disableShiftAnimationRef.current = true;
+            commitColumnOrder(final);
+
+            requestAnimationFrame(() => {
+                disableShiftAnimationRef.current = false;
+            });
+
+            setPreviewOrder(null);
+            endColumnDrag();
+            setGhost(null);
+        };
 
         const handleMove = (ev: MouseEvent) => {
             if (resizeRef.current) return;
@@ -916,37 +973,45 @@ const AirTableInner = <T extends unknown>({
             setPreviewOrder(next);
         };
 
-        const handleUp = () => {
-            if (resizeRef.current) return;
+        const handleUp = () => finalize();
 
-            const dragging = drag.draggingKey;
-            const final = drag.previewOrder;
-
-            if (!dragging || !final || final.length === 0) {
-                setPreviewOrder(null);
-                endColumnDrag();
-                setGhost(null);
-                return;
-            }
-
-            disableShiftAnimationRef.current = true;
-            commitColumnOrder(final);
-
-            requestAnimationFrame(() => {
-                disableShiftAnimationRef.current = false;
-            });
-
-            setPreviewOrder(null);
-            endColumnDrag();
-            setGhost(null);
+        // ✅ mouseup이 누락되는 케이스(창 밖에서 놓기/브라우저가 드래그 먹기 등) 대비 안전장치
+        const handleBlur = () => finalize();
+        const handleContextMenu = () => finalize();
+        const handleDragEnd = () => finalize();
+        const handlePointerUp = () => finalize();
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') finalize();
         };
+        const handleVisibility = () => {
+            if (document.hidden) finalize();
+        };
+        const handleDocMouseLeave = () => finalize();
 
         window.addEventListener('mousemove', handleMove);
         window.addEventListener('mouseup', handleUp);
 
+        window.addEventListener('blur', handleBlur);
+        window.addEventListener('contextmenu', handleContextMenu);
+        window.addEventListener('dragend', handleDragEnd);
+        window.addEventListener('pointerup', handlePointerUp);
+        window.addEventListener('keydown', handleKeyDown);
+
+        document.addEventListener('visibilitychange', handleVisibility);
+        document.addEventListener('mouseleave', handleDocMouseLeave);
+
         return () => {
             window.removeEventListener('mousemove', handleMove);
             window.removeEventListener('mouseup', handleUp);
+
+            window.removeEventListener('blur', handleBlur);
+            window.removeEventListener('contextmenu', handleContextMenu);
+            window.removeEventListener('dragend', handleDragEnd);
+            window.removeEventListener('pointerup', handlePointerUp);
+            window.removeEventListener('keydown', handleKeyDown);
+
+            document.removeEventListener('visibilitychange', handleVisibility);
+            document.removeEventListener('mouseleave', handleDocMouseLeave);
         };
     }, [
         drag.draggingKey,
@@ -1025,6 +1090,7 @@ const AirTableInner = <T extends unknown>({
             storageKey,
             style,
             children,
+            getRowCanExpand,
         },
         wrapperRef,
         scrollRef,
@@ -1058,11 +1124,15 @@ const AirTableInner = <T extends unknown>({
 
         getRange,
         isCellSelected,
+
+        expandedRowKeys,
+        toggleRowExpanded,
+        isRowExpanded,
     };
 
     return (
         <Context.Provider value={value as any}>
-            <div ref={wrapperRef} style={{ width: '100%', position: 'relative', ...style }}>
+            <div ref={wrapperRef} style={{ width: '100%',  position: 'relative', ...style }}>
                 {children ?? (
                     <>
                         <ColumnVisibilityControl />
@@ -1083,11 +1153,13 @@ const AirTable = AirTableInner as typeof AirTableInner & {
     Header: typeof Header;
     Body: typeof Body;
     Ghost: typeof Ghost;
+    RowToggle: typeof RowToggle;
 };
 
 AirTable.Container = Container;
 AirTable.Header = Header;
 AirTable.Body = Body;
 AirTable.Ghost = Ghost;
+AirTable.RowToggle = RowToggle;
 
 export default AirTable;
