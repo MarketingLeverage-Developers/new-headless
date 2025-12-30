@@ -5,6 +5,7 @@ import { Body } from './components/Body';
 import { Ghost } from './components/Ghost';
 import { ColumnVisibilityControl } from './components/ColumnVisibilityControl';
 import RowToggle from './components/RowToggle';
+import { ColumnSelectBoxPortal } from './components/ColumnSelectBoxPortal';
 
 /* =========================
    Types
@@ -1132,10 +1133,10 @@ const AirTableInner = <T,>({
 
     return (
         <Context.Provider value={value as any}>
-            <div ref={wrapperRef} style={{ width: '100%',  position: 'relative', ...style }}>
+            <div ref={wrapperRef} style={{ width: '100%', position: 'relative', ...style }}>
                 {children ?? (
                     <>
-                        <ColumnVisibilityControl />
+                        <ColumnVisibilityControl portalId="column-select-box-portal" />
                         <Container>
                             <Header />
                             <Body />
@@ -1154,6 +1155,7 @@ const AirTable = AirTableInner as typeof AirTableInner & {
     Body: typeof Body;
     Ghost: typeof Ghost;
     RowToggle: typeof RowToggle;
+    ColumnSelectBoxPortal: typeof ColumnSelectBoxPortal;
 };
 
 AirTable.Container = Container;
@@ -1161,5 +1163,6 @@ AirTable.Header = Header;
 AirTable.Body = Body;
 AirTable.Ghost = Ghost;
 AirTable.RowToggle = RowToggle;
+AirTable.ColumnSelectBoxPortal = ColumnSelectBoxPortal;
 
 export default AirTable;
