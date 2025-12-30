@@ -118,11 +118,8 @@ const ExpandableDetailRow = ({
                         if (timerRef.current) window.clearTimeout(timerRef.current);
                         timerRef.current = null;
 
-                        if (expanded) {
-                            setHeight('auto');
-                        } else {
-                            setShouldRender(false);
-                        }
+                        if (expanded) setHeight('auto');
+                        else setShouldRender(false);
                     }}
                 >
                     <div className={[styles.detailRoot, visualOpen ? styles.detailOpen : ''].join(' ')}>
@@ -142,7 +139,6 @@ type BodyProps = {
     rowClassName?: string;
     cellClassName?: string;
     selectedCellClassName?: string;
-
     detailRowClassName?: string;
     detailCellClassName?: string;
 };
@@ -158,12 +154,12 @@ export const Body = <T,>({
 }: BodyProps) => {
     const {
         props,
-        scrollRef,
         tableAreaRef,
         state,
         baseOrder,
         gridTemplateColumns,
         getShiftStyle,
+        getPinnedStyle,
         setSelection,
         isCellSelected,
         toggleRowExpanded,
@@ -186,15 +182,19 @@ export const Body = <T,>({
 
     return (
         <div
-            ref={scrollRef}
             className={className}
             style={{
                 ...style,
-                // ✅✅✅ 브라우저 기본 텍스트 selection 자체를 막음(드래그시)
                 userSelect: 'none',
+                minHeight: 0,
+                minWidth: 0,
+
+                // ✅✅✅ 핵심: Body가 scroll 컨테이너가 되지 못하게 강제 차단
+                overflow: 'visible',
+                maxHeight: 'none',
             }}
         >
-            <div ref={tableAreaRef} style={{ position: 'relative', minWidth: '100%' }}>
+            <div ref={tableAreaRef} style={{ position: 'relative', minWidth: 'fit-content', width: 'fit-content' }}>
                 <div>
                     {rows.map((row, ri) => {
                         const rowStyle = getRowStyle?.(row.item, ri) ?? {};
@@ -241,8 +241,6 @@ export const Body = <T,>({
                                                 ].join(' ')}
                                                 onMouseDown={(e) => {
                                                     if (drag.draggingKey) return;
-
-                                                    // ✅✅✅ 여기 핵심: 브라우저 기본 selection 막기
                                                     e.preventDefault();
 
                                                     const target = e.target as HTMLElement;
@@ -257,6 +255,7 @@ export const Body = <T,>({
                                                 style={{
                                                     backgroundColor: cellBg,
                                                     ...getShiftStyle(colKey),
+                                                    ...getPinnedStyle(colKey, cellBg ?? '#fff'),
                                                 }}
                                             >
                                                 {cell.render(row.item, ri, meta)}

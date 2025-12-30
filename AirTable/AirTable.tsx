@@ -46,6 +46,7 @@ export type AirTableProps<T> = {
     storageKey?: string;
     style?: React.CSSProperties;
     children?: React.ReactNode;
+    pinnedColumnKeys?: string[];
 };
 
 export type DragGhost = {
@@ -597,6 +598,8 @@ type AirTableContextValue<T> = {
     expandedRowKeys: Set<string>;
     toggleRowExpanded: (rowKey: string) => void;
     isRowExpanded: (rowKey: string) => boolean;
+
+    getPinnedStyle: (colKey: string, bg?: string, options?: { isHeader?: boolean }) => React.CSSProperties;
 };
 
 type Internal = AirTableContextValue<unknown>;
@@ -624,6 +627,7 @@ const AirTableInner = <T,>({
     storageKey,
     style,
     children,
+    pinnedColumnKeys = [],
 }: AirTableProps<T>) => {
     const wrapperRef = useRef<HTMLDivElement | null>(null);
     const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -677,12 +681,21 @@ const AirTableInner = <T,>({
     }, [columnRow.columns]);
 
     const baseOrder = useMemo(() => {
+        // 1) 현재 보여지는 컬럼 순서를 만든다 (기존 로직 유지)
         const base = columnOrder.filter((k) => visibleKeys.includes(k));
         visibleKeys.forEach((k) => {
             if (!base.includes(k)) base.push(k);
         });
-        return base;
-    }, [columnOrder, visibleKeys]);
+
+        // 2) pinnedColumnKeys 중, 실제로 존재하는 key만 추린다
+        const pinned = pinnedColumnKeys.filter((k) => base.includes(k));
+
+        // 3) pinned가 아닌 컬럼만 추린다
+        const normal = base.filter((k) => !pinned.includes(k));
+
+        // 4) pinned를 항상 맨 앞으로 붙인다
+        return [...pinned, ...normal];
+    }, [columnOrder, visibleKeys, pinnedColumnKeys]);
 
     const previewOrder = useMemo(() => {
         const p = drag.previewOrder?.filter((k) => baseOrder.includes(k)) ?? null;
@@ -723,11 +736,16 @@ const AirTableInner = <T,>({
         return map;
     }, [baseOrder, previewXByKey, baseXByKey]);
 
+    // ✅✅✅ 핵심: "테이블 실제 폭" (헤더/바디가 동일한 폭을 공유해야 수평스크롤이 동기화됨)
+    const tableMinWidthPx = useMemo(
+        () => baseOrder.reduce((acc, k) => acc + (widthByKey[k] ?? defaultColWidth), 0),
+        [baseOrder, widthByKey, defaultColWidth]
+    );
+
     const [ghost, setGhost] = useState<DragGhost | null>(null);
     const [headerScrollLeft, setHeaderScrollLeft] = useState(0);
 
     const disableShiftAnimationRef = useRef(false);
-
     const resizeRef = useRef<{ key: string; startX: number; startWidth: number } | null>(null);
 
     const [selection, setSelection] = useState<SelectionState>({
@@ -839,10 +857,6 @@ const AirTableInner = <T,>({
 
     const isRowExpanded = useCallback((rowKey: string) => expandedRowKeys.has(rowKey), [expandedRowKeys]);
 
-    /* =========================
-       ✅✅✅ Auto Scroll (selection / column drag)
-       ========================= */
-
     useEffect(() => {
         const shouldAutoScroll = selection.isSelecting || !!drag.draggingKey;
         if (!shouldAutoScroll) return;
@@ -884,10 +898,6 @@ const AirTableInner = <T,>({
         return () => cancelAnimationFrame(rafId);
     }, [selection.isSelecting, drag.draggingKey]);
 
-    /* =========================
-       ✅ 리사이즈 전역 리스너
-       ========================= */
-
     useEffect(() => {
         const handleMove = (ev: MouseEvent) => {
             const r = resizeRef.current;
@@ -914,10 +924,6 @@ const AirTableInner = <T,>({
         };
     }, [getXInGrid, resizeColumn]);
 
-    /* =========================
-   ✅ 컬럼 이동 전역 리스너
-   ========================= */
-
     useEffect(() => {
         const draggingKey = drag.draggingKey;
         if (!draggingKey) return;
@@ -928,7 +934,6 @@ const AirTableInner = <T,>({
             const dragging = drag.draggingKey;
             const final = drag.previewOrder;
 
-            // draggingKey가 살아있는 상태에서만 종료 처리
             if (!dragging) return;
 
             if (!final || final.length === 0) {
@@ -976,7 +981,6 @@ const AirTableInner = <T,>({
 
         const handleUp = () => finalize();
 
-        // ✅ mouseup이 누락되는 케이스(창 밖에서 놓기/브라우저가 드래그 먹기 등) 대비 안전장치
         const handleBlur = () => finalize();
         const handleContextMenu = () => finalize();
         const handleDragEnd = () => finalize();
@@ -1028,10 +1032,6 @@ const AirTableInner = <T,>({
         endColumnDrag,
     ]);
 
-    /* =========================
-       ✅ 선택 종료
-       ========================= */
-
     useEffect(() => {
         const handleUp = () => {
             if (drag.draggingKey) return;
@@ -1041,10 +1041,6 @@ const AirTableInner = <T,>({
         window.addEventListener('mouseup', handleUp);
         return () => window.removeEventListener('mouseup', handleUp);
     }, [drag.draggingKey]);
-
-    /* =========================
-       ✅ Copy (TSV)
-       ========================= */
 
     useEffect(() => {
         const handleCopy = (e: ClipboardEvent) => {
@@ -1080,6 +1076,25 @@ const AirTableInner = <T,>({
         return () => window.removeEventListener('copy', handleCopy);
     }, [state.rows, baseOrder, getRange, drag.draggingKey]);
 
+    const getPinnedStyle = useCallback(
+        (colKey: string, bg?: string, options?: { isHeader?: boolean }): React.CSSProperties => {
+            if (!pinnedColumnKeys.includes(colKey)) return {};
+
+            const isHeader = options?.isHeader === true;
+
+            return {
+                position: 'sticky',
+                left: baseXByKey[colKey] ?? 0,
+                zIndex: 50,
+                background: bg ?? '#fff',
+                transform: 'none',
+
+                // ✅ pinned 헤더일 때만 글자색 흰색
+                color: isHeader ? '#fff' : undefined,
+            };
+        },
+        [pinnedColumnKeys, baseXByKey]
+    );
     const value: AirTableContextValue<T> = {
         props: {
             data,
@@ -1092,6 +1107,7 @@ const AirTableInner = <T,>({
             style,
             children,
             getRowCanExpand,
+            pinnedColumnKeys,
         },
         wrapperRef,
         scrollRef,
@@ -1129,16 +1145,40 @@ const AirTableInner = <T,>({
         expandedRowKeys,
         toggleRowExpanded,
         isRowExpanded,
+
+        getPinnedStyle,
     };
 
     return (
         <Context.Provider value={value as any}>
-            <div ref={wrapperRef} style={{ width: '100%', position: 'relative', ...style }}>
+            <div
+                ref={wrapperRef}
+                style={{
+                    width: '100%',
+                    height: '100%',
+                    minHeight: 0,
+                    position: 'relative',
+                    overflow: 'hidden', // ✅ 외부 수평스크롤 방지
+                    ...style,
+                }}
+            >
                 {children ?? (
                     <>
                         <ColumnVisibilityControl portalId="column-select-box-portal" />
                         <Container>
-                            <Header />
+                            {/* ✅ 헤더 sticky 래퍼가 "테이블 실제 폭"을 가져야 수평스크롤이 같이 움직임 */}
+                            <div
+                                style={{
+                                    position: 'sticky',
+                                    top: 0,
+                                    zIndex: 30,
+                                    background: '#fff',
+                                    minWidth: `${tableMinWidthPx}px`, // ✅ 핵심
+                                }}
+                            >
+                                <Header />
+                            </div>
+
                             <Body />
                             <Ghost />
                         </Container>
