@@ -1,5 +1,5 @@
 import { useAirTableContext } from '../AirTable';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 type Rect = {
     top: number;
@@ -23,9 +23,36 @@ export const useColumnVisibilityControl = <T>({ portalId }: Options) => {
     const triggerRef = useRef<HTMLButtonElement | null>(null);
     const dropdownRef = useRef<HTMLDivElement | null>(null);
 
-    const portalEl = useMemo(() => {
-        if (!portalId) return null;
-        return document.getElementById(portalId);
+    const [portalEl, setPortalEl] = useState<HTMLElement | null>(null);
+
+    // ✅ portal target은 "나중에 DOM에 생겨도" 잡히게 해야 함
+    useLayoutEffect(() => {
+        if (!portalId) {
+            setPortalEl(null);
+            return;
+        }
+        if (typeof window === 'undefined') return;
+
+        const findPortal = () => {
+            const el = document.getElementById(portalId);
+            if (el) {
+                setPortalEl(el);
+                return true;
+            }
+            return false;
+        };
+
+        // 1) 지금 바로 찾기
+        if (findPortal()) return;
+
+        // 2) 없으면 생길 때까지 관찰
+        const observer = new MutationObserver(() => {
+            if (findPortal()) observer.disconnect();
+        });
+
+        observer.observe(document.body, { childList: true, subtree: true });
+
+        return () => observer.disconnect();
     }, [portalId]);
 
     const close = useCallback(() => {
@@ -118,13 +145,11 @@ export const useColumnVisibilityControl = <T>({ portalId }: Options) => {
 
         // state
         open,
-        setOpen,
         toggleOpen,
         close,
 
         // position
         anchorRect,
-        updateRect,
 
         // columns
         allLeafColumns,
