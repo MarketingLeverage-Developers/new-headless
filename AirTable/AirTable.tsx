@@ -46,6 +46,11 @@ export type AirTableProps<T> = {
     storageKey?: string;
     style?: React.CSSProperties;
     children?: React.ReactNode;
+
+    /**
+     * ✅ 초기 pinned을 외부에서 주고 싶으면 가능
+     * (저장된 값이 있으면 저장된 값이 우선)
+     */
     pinnedColumnKeys?: string[];
 };
 
@@ -70,7 +75,7 @@ export type SelectionState = {
 export const MIN_COL_WIDTH = 80;
 
 /* =========================
-   useTable (원본 그대로)
+   useTable (원본 + pinned persist)
    ========================= */
 
 type PersistedTableState = {
@@ -78,6 +83,9 @@ type PersistedTableState = {
     columnOrder: string[];
     visibleColumnKeys: string[];
     knownColumnKeys: string[];
+
+    // ✅ pinned 컬럼 저장
+    pinnedColumnKeys?: string[];
 };
 
 export type DragState = {
@@ -120,6 +128,10 @@ export type UseTableResult<T> = {
 
     resizeColumn: (colKey: string, width: number) => void;
     commitColumnOrder: (order: string[]) => void;
+
+    // ✅ pinned 관련
+    pinnedColumnKeys: string[];
+    setPinnedColumnKeys: (keys: string[]) => void;
 };
 
 const uniq = (arr: string[]) => Array.from(new Set(arr.map(String)));
@@ -162,7 +174,10 @@ const loadPersistedTableState = (storageKey?: string): PersistedTableState | nul
             return parsedKnown.length > 0 ? parsedKnown : legacyKnown;
         })();
 
-        return { columnWidths, columnOrder, visibleColumnKeys, knownColumnKeys };
+        // ✅ pinned 읽기
+        const pinnedColumnKeys = uniq(normalizeStringArray((obj as any).pinnedColumnKeys));
+
+        return { columnWidths, columnOrder, visibleColumnKeys, knownColumnKeys, pinnedColumnKeys };
     } catch {
         return null;
     }
@@ -241,6 +256,7 @@ const useTable = <T,>({
     containerWidth,
     rowKeyField,
     storageKey,
+    initialPinnedColumnKeys,
 }: {
     columns: Column<T>[];
     data: T[];
@@ -249,6 +265,7 @@ const useTable = <T,>({
     containerWidth: number;
     rowKeyField?: string;
     storageKey?: string;
+    initialPinnedColumnKeys?: string[];
 }): UseTableResult<T> => {
     const leafColumns = useMemo(
         () =>
@@ -307,6 +324,13 @@ const useTable = <T,>({
     });
     const [knownColumnKeys, setKnownColumnKeys] = useState<string[]>(() => persisted?.knownColumnKeys ?? []);
 
+    // ✅ pinned: persisted가 있으면 persisted 우선, 없으면 initialPinnedColumnKeys
+    const [pinnedColumnKeys, setPinnedColumnKeysState] = useState<string[]>(() => {
+        const fromPersisted = persisted?.pinnedColumnKeys ?? [];
+        if (fromPersisted.length > 0) return uniq(fromPersisted);
+        return uniq(initialPinnedColumnKeys ?? []);
+    });
+
     const knownSetRef = useRef<Set<string>>(new Set(persisted?.knownColumnKeys ?? []));
     useEffect(() => {
         knownSetRef.current = new Set(knownColumnKeys);
@@ -317,6 +341,7 @@ const useTable = <T,>({
         columnOrder,
         visibleColumnKeys: visibleColumnKeysDesired,
         knownColumnKeys,
+        pinnedColumnKeys,
     });
 
     useEffect(() => {
@@ -325,8 +350,9 @@ const useTable = <T,>({
             columnOrder,
             visibleColumnKeys: visibleColumnKeysDesired,
             knownColumnKeys,
+            pinnedColumnKeys,
         };
-    }, [columnWidths, columnOrder, visibleColumnKeysDesired, knownColumnKeys]);
+    }, [columnWidths, columnOrder, visibleColumnKeysDesired, knownColumnKeys, pinnedColumnKeys]);
 
     const persistNow = useCallback(() => {
         if (!storageKey) return;
@@ -336,6 +362,7 @@ const useTable = <T,>({
             columnOrder: uniq(s.columnOrder),
             visibleColumnKeys: uniq(s.visibleColumnKeys),
             knownColumnKeys: uniq(s.knownColumnKeys),
+            pinnedColumnKeys: uniq(s.pinnedColumnKeys ?? []),
         });
     }, [storageKey]);
 
@@ -357,6 +384,18 @@ const useTable = <T,>({
 
                 return next;
             });
+        },
+        [leafKeySet, persistNow]
+    );
+
+    // ✅ pinned setter (저장 포함)
+    const setPinnedColumnKeys = useCallback(
+        (keys: string[]) => {
+            const next = uniq(keys.map(String)).filter((k) => leafKeySet.has(k));
+            setPinnedColumnKeysState(next);
+
+            stateRef.current = { ...stateRef.current, pinnedColumnKeys: next };
+            persistNow();
         },
         [leafKeySet, persistNow]
     );
@@ -397,6 +436,9 @@ const useTable = <T,>({
             if (newKeys.length > 0) return uniq([...prevDesired, ...newKeys]);
             return prevDesired;
         });
+
+        // ✅ pinned에도 새로 생긴 컬럼은 자동 포함 X (사용자가 직접 pin)
+        setPinnedColumnKeysState((prevPinned) => prevPinned.filter((k) => leafKeySet.has(k)));
     }, [leafKeys, leafKeySet, baseLeafWidthByKey, defaultColWidth]);
 
     const resizeColumn = useCallback(
@@ -553,6 +595,9 @@ const useTable = <T,>({
         endColumnDrag,
         resizeColumn,
         commitColumnOrder,
+
+        pinnedColumnKeys,
+        setPinnedColumnKeys,
     };
 };
 
@@ -600,6 +645,10 @@ type AirTableContextValue<T> = {
     isRowExpanded: (rowKey: string) => boolean;
 
     getPinnedStyle: (colKey: string, bg?: string, options?: { isHeader?: boolean }) => React.CSSProperties;
+
+    // ✅ pinned state 제공
+    pinnedColumnKeys: string[];
+    setPinnedColumnKeys: (keys: string[]) => void;
 };
 
 type Internal = AirTableContextValue<unknown>;
@@ -627,7 +676,7 @@ const AirTableInner = <T,>({
     storageKey,
     style,
     children,
-    pinnedColumnKeys = [],
+    pinnedColumnKeys: initialPinnedColumnKeys = [],
 }: AirTableProps<T>) => {
     const wrapperRef = useRef<HTMLDivElement | null>(null);
     const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -657,6 +706,7 @@ const AirTableInner = <T,>({
         containerWidth,
         rowKeyField: rowKeyField ? String(rowKeyField) : undefined,
         storageKey,
+        initialPinnedColumnKeys,
     });
 
     const {
@@ -668,6 +718,8 @@ const AirTableInner = <T,>({
         endColumnDrag,
         updateColumnDrag,
         resizeColumn,
+        pinnedColumnKeys,
+        setPinnedColumnKeys,
     } = state;
 
     const visibleKeys = useMemo(() => columnRow.columns.map((c) => c.key), [columnRow.columns]);
@@ -736,7 +788,6 @@ const AirTableInner = <T,>({
         return map;
     }, [baseOrder, previewXByKey, baseXByKey]);
 
-    // ✅✅✅ 핵심: "테이블 실제 폭" (헤더/바디가 동일한 폭을 공유해야 수평스크롤이 동기화됨)
     const tableMinWidthPx = useMemo(
         () => baseOrder.reduce((acc, k) => acc + (widthByKey[k] ?? defaultColWidth), 0),
         [baseOrder, widthByKey, defaultColWidth]
@@ -757,11 +808,11 @@ const AirTableInner = <T,>({
     const lastMouseClientRef = useRef<{ x: number; y: number } | null>(null);
 
     useEffect(() => {
-        const handleMove = (ev: MouseEvent) => {
+        const handleMove = (ev: PointerEvent) => {
             lastMouseClientRef.current = { x: ev.clientX, y: ev.clientY };
         };
-        window.addEventListener('mousemove', handleMove);
-        return () => window.removeEventListener('mousemove', handleMove);
+        window.addEventListener('pointermove', handleMove);
+        return () => window.removeEventListener('pointermove', handleMove);
     }, []);
 
     const getXInGrid = useCallback(
@@ -883,7 +934,7 @@ const AirTableInner = <T,>({
 
             if (distLeft >= 0 && distLeft < edge) {
                 const ratio = 1 - distLeft / edge;
-                const accel = ratio * ratio; // ✅ 가속 강화 (2제곱)
+                const accel = ratio * ratio;
                 dx = -Math.max(2, Math.round(maxSpeed * accel));
             } else if (distRight >= 0 && distRight < edge) {
                 const ratio = 1 - distRight / edge;
@@ -1090,13 +1141,12 @@ const AirTableInner = <T,>({
                 zIndex: 50,
                 background: bg ?? '#fff',
                 transform: 'none',
-
-                // ✅ pinned 헤더일 때만 글자색 흰색
                 color: isHeader ? '#fff' : undefined,
             };
         },
         [pinnedColumnKeys, baseXByKey]
     );
+
     const value: AirTableContextValue<T> = {
         props: {
             data,
@@ -1109,7 +1159,7 @@ const AirTableInner = <T,>({
             style,
             children,
             getRowCanExpand,
-            pinnedColumnKeys,
+            pinnedColumnKeys, // ✅ 실제 사용 pinned
         },
         wrapperRef,
         scrollRef,
@@ -1149,6 +1199,10 @@ const AirTableInner = <T,>({
         isRowExpanded,
 
         getPinnedStyle,
+
+        // ✅ pinned setter 제공
+        pinnedColumnKeys,
+        setPinnedColumnKeys,
     };
 
     return (
@@ -1160,7 +1214,7 @@ const AirTableInner = <T,>({
                     height: '100%',
                     minHeight: 0,
                     position: 'relative',
-                    overflow: 'hidden', // ✅ 외부 수평스크롤 방지
+                    overflow: 'hidden',
                     ...style,
                 }}
             >
@@ -1168,14 +1222,13 @@ const AirTableInner = <T,>({
                     <>
                         <ColumnVisibilityControl portalId="column-select-box-portal" />
                         <Container>
-                            {/* ✅ 헤더 sticky 래퍼가 "테이블 실제 폭"을 가져야 수평스크롤이 같이 움직임 */}
                             <div
                                 style={{
                                     position: 'sticky',
                                     top: 0,
                                     zIndex: 30,
                                     background: '#fff',
-                                    minWidth: `${tableMinWidthPx}px`, // ✅ 핵심
+                                    minWidth: `${tableMinWidthPx}px`,
                                 }}
                             >
                                 <Header />
