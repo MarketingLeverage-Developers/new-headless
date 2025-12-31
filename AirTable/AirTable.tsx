@@ -1142,7 +1142,7 @@ const AirTableInner = <T,>({
                 left,
 
                 // ✅ pinned는 반드시 위 레이어로 올라와야 한다
-                zIndex: isHeader ? 1200 : 1100,
+                zIndex: 50,
 
                 // ✅ pinned는 겹쳐도 배경이 반드시 있어야 한다
                 background: bg ?? '#fff',
