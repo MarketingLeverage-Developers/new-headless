@@ -873,8 +873,8 @@ const AirTableInner = <T,>({
             }
 
             const rect = scrollEl.getBoundingClientRect();
-            const edge = 32;
-            const maxSpeed = 18;
+            const edge = 80;
+            const maxSpeed = 48;
 
             const distLeft = last.x - rect.left;
             const distRight = rect.right - last.x;
@@ -883,10 +883,12 @@ const AirTableInner = <T,>({
 
             if (distLeft >= 0 && distLeft < edge) {
                 const ratio = 1 - distLeft / edge;
-                dx = -Math.max(2, Math.round(maxSpeed * ratio));
+                const accel = ratio * ratio; // ✅ 가속 강화 (2제곱)
+                dx = -Math.max(2, Math.round(maxSpeed * accel));
             } else if (distRight >= 0 && distRight < edge) {
                 const ratio = 1 - distRight / edge;
-                dx = Math.max(2, Math.round(maxSpeed * ratio));
+                const accel = ratio * ratio;
+                dx = Math.max(2, Math.round(maxSpeed * accel));
             }
 
             if (dx !== 0) scrollEl.scrollLeft += dx;
