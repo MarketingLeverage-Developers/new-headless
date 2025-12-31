@@ -1135,12 +1135,31 @@ const AirTableInner = <T,>({
 
             const isHeader = options?.isHeader === true;
 
+            const left = baseXByKey[colKey] ?? 0;
+
             return {
                 position: 'sticky',
-                left: baseXByKey[colKey] ?? 0,
-                zIndex: 50,
+                left,
+
+                // ✅ pinned는 반드시 위 레이어로 올라와야 한다
+                zIndex: isHeader ? 1200 : 1100,
+
+                // ✅ pinned는 겹쳐도 배경이 반드시 있어야 한다
                 background: bg ?? '#fff',
-                transform: 'none',
+
+                // ✅ pinned 영역 구분선 (오른쪽 border)
+                borderRight: '1px solid rgba(0,0,0,0.08)',
+
+                // ✅ pinned 느낌을 주는 shadow (특히 스크롤할 때)
+                boxShadow: '6px 0 10px rgba(0,0,0,0.06)',
+
+                // ✅ 하위 요소가 섞여서 깨지는 문제 방지
+                backgroundClip: 'padding-box',
+
+                // ✅ sticky 성능 최적화
+                willChange: 'transform',
+
+                // ✅ header 색 유지
                 color: isHeader ? '#fff' : undefined,
             };
         },
