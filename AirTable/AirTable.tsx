@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import React, { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react';
 import { Container } from './components/Container';
 import { Header } from './components/Header';
 import { Body } from './components/Body';
@@ -6,6 +6,18 @@ import { Ghost } from './components/Ghost';
 import { ColumnVisibilityControl } from './components/ColumnVisibilityControl';
 import RowToggle from './components/RowToggle';
 import { ColumnSelectBoxPortal } from './components/ColumnSelectBoxPortal';
+
+import { useContainerWidth } from './hooks/useContainerWidth';
+import { useLastPointerPosition } from './hooks/useLastPointerPosition';
+import { useSelectionRange } from './hooks/useSelectionRange';
+import { useAutoScroll } from './hooks/useAutoScroll';
+import { useColumnResize } from './hooks/useColumnResize';
+import { useColumnDrag } from './hooks/useColumnDrag';
+import { useSelectionMouseUpEnd } from './hooks/useSelectionMouseUpEnd';
+import { useCopySelection } from './hooks/useCopySelection';
+import { usePinnedStyle } from './hooks/usePinnedStyle';
+import { useGridMeta } from './hooks/useGridMeta';
+import { useGridPointer } from './hooks/useGridPointer';
 
 /* =========================
    Types
@@ -46,11 +58,6 @@ export type AirTableProps<T> = {
     storageKey?: string;
     style?: React.CSSProperties;
     children?: React.ReactNode;
-
-    /**
-     * ✅ 초기 pinned을 외부에서 주고 싶으면 가능
-     * (저장된 값이 있으면 저장된 값이 우선)
-     */
     pinnedColumnKeys?: string[];
 };
 
@@ -75,7 +82,7 @@ export type SelectionState = {
 export const MIN_COL_WIDTH = 80;
 
 /* =========================
-   useTable (원본 + pinned persist)
+   useTable (원본 + pinned persist) ✅ 유지
    ========================= */
 
 type PersistedTableState = {
@@ -83,8 +90,6 @@ type PersistedTableState = {
     columnOrder: string[];
     visibleColumnKeys: string[];
     knownColumnKeys: string[];
-
-    // ✅ pinned 컬럼 저장
     pinnedColumnKeys?: string[];
 };
 
@@ -129,7 +134,6 @@ export type UseTableResult<T> = {
     resizeColumn: (colKey: string, width: number) => void;
     commitColumnOrder: (order: string[]) => void;
 
-    // ✅ pinned 관련
     pinnedColumnKeys: string[];
     setPinnedColumnKeys: (keys: string[]) => void;
 };
@@ -174,7 +178,6 @@ const loadPersistedTableState = (storageKey?: string): PersistedTableState | nul
             return parsedKnown.length > 0 ? parsedKnown : legacyKnown;
         })();
 
-        // ✅ pinned 읽기
         const pinnedColumnKeys = uniq(normalizeStringArray((obj as any).pinnedColumnKeys));
 
         return { columnWidths, columnOrder, visibleColumnKeys, knownColumnKeys, pinnedColumnKeys };
@@ -324,7 +327,6 @@ const useTable = <T,>({
     });
     const [knownColumnKeys, setKnownColumnKeys] = useState<string[]>(() => persisted?.knownColumnKeys ?? []);
 
-    // ✅ pinned: persisted가 있으면 persisted 우선, 없으면 initialPinnedColumnKeys
     const [pinnedColumnKeys, setPinnedColumnKeysState] = useState<string[]>(() => {
         const fromPersisted = persisted?.pinnedColumnKeys ?? [];
         if (fromPersisted.length > 0) return uniq(fromPersisted);
@@ -332,8 +334,9 @@ const useTable = <T,>({
     });
 
     const knownSetRef = useRef<Set<string>>(new Set(persisted?.knownColumnKeys ?? []));
-    useEffect(() => {
+    useMemo(() => {
         knownSetRef.current = new Set(knownColumnKeys);
+        return null;
     }, [knownColumnKeys]);
 
     const stateRef = useRef<PersistedTableState>({
@@ -344,7 +347,7 @@ const useTable = <T,>({
         pinnedColumnKeys,
     });
 
-    useEffect(() => {
+    useMemo(() => {
         stateRef.current = {
             columnWidths,
             columnOrder,
@@ -352,6 +355,7 @@ const useTable = <T,>({
             knownColumnKeys,
             pinnedColumnKeys,
         };
+        return null;
     }, [columnWidths, columnOrder, visibleColumnKeysDesired, knownColumnKeys, pinnedColumnKeys]);
 
     const persistNow = useCallback(() => {
@@ -388,7 +392,6 @@ const useTable = <T,>({
         [leafKeySet, persistNow]
     );
 
-    // ✅ pinned setter (저장 포함)
     const setPinnedColumnKeys = useCallback(
         (keys: string[]) => {
             const next = uniq(keys.map(String)).filter((k) => leafKeySet.has(k));
@@ -400,8 +403,8 @@ const useTable = <T,>({
         [leafKeySet, persistNow]
     );
 
-    useEffect(() => {
-        if (leafKeys.length === 0) return;
+    useMemo(() => {
+        if (leafKeys.length === 0) return null;
 
         const knownSet = knownSetRef.current;
         const newKeys = leafKeys.filter((k) => !knownSet.has(k));
@@ -437,8 +440,9 @@ const useTable = <T,>({
             return prevDesired;
         });
 
-        // ✅ pinned에도 새로 생긴 컬럼은 자동 포함 X (사용자가 직접 pin)
         setPinnedColumnKeysState((prevPinned) => prevPinned.filter((k) => leafKeySet.has(k)));
+
+        return null;
     }, [leafKeys, leafKeySet, baseLeafWidthByKey, defaultColWidth]);
 
     const resizeColumn = useCallback(
@@ -595,14 +599,13 @@ const useTable = <T,>({
         endColumnDrag,
         resizeColumn,
         commitColumnOrder,
-
         pinnedColumnKeys,
         setPinnedColumnKeys,
     };
 };
 
 /* =========================
-   Context
+   Context ✅ 유지
    ========================= */
 
 type AirTableContextValue<T> = {
@@ -646,13 +649,11 @@ type AirTableContextValue<T> = {
 
     getPinnedStyle: (colKey: string, bg?: string, options?: { isHeader?: boolean }) => React.CSSProperties;
 
-    // ✅ pinned state 제공
     pinnedColumnKeys: string[];
     setPinnedColumnKeys: (keys: string[]) => void;
 };
 
 type Internal = AirTableContextValue<unknown>;
-
 const Context = createContext<Internal | undefined>(undefined);
 
 export const useAirTableContext = <T,>(): AirTableContextValue<T> => {
@@ -682,22 +683,17 @@ const AirTableInner = <T,>({
     const scrollRef = useRef<HTMLDivElement | null>(null);
     const tableAreaRef = useRef<HTMLDivElement | null>(null);
 
-    const [containerWidth, setContainerWidth] = useState(0);
+    /* =========================
+       Hooks (역할 요약)
+       ========================= */
+
+    // useContainerWidth: wrapper DOM의 현재 너비를 실시간으로 추적해서 컬럼 % 너비 계산 등에 사용
+    const containerWidth = useContainerWidth(wrapperRef);
+
+    // expandedRowKeys: RowToggle(상세 Row) 확장 여부를 Set으로 관리
     const [expandedRowKeys, setExpandedRowKeys] = useState<Set<string>>(() => new Set());
 
-    useEffect(() => {
-        const el = wrapperRef.current;
-        if (!el) return;
-
-        const update = () => setContainerWidth(el.clientWidth);
-        update();
-
-        const ro = new ResizeObserver(update);
-        ro.observe(el);
-
-        return () => ro.disconnect();
-    }, []);
-
+    // useTable: 컬럼/데이터 기반으로 테이블 렌더 구조(rows/columns) + 상태(순서/너비/가시성/핀/드래그)를 생성하고 관리
     const state = useTable<T>({
         columns,
         data,
@@ -732,66 +728,25 @@ const AirTableInner = <T,>({
         return map;
     }, [columnRow.columns]);
 
-    const baseOrder = useMemo(() => {
-        // 1) 현재 보여지는 컬럼 순서를 만든다 (기존 로직 유지)
-        const base = columnOrder.filter((k) => visibleKeys.includes(k));
-        visibleKeys.forEach((k) => {
-            if (!base.includes(k)) base.push(k);
-        });
+    // useGridMeta: 현재 컬럼 순서/가시성/핀/드래그 미리보기 정보를 바탕으로 grid-template-columns / x좌표 / shift offset 등을 계산
+    const { baseOrder, previewOrder, gridTemplateColumns, baseXByKey, offsetByKey, tableMinWidthPx } = useGridMeta({
+        columnOrder,
+        visibleKeys,
+        widthByKey,
+        defaultColWidth,
+        pinnedColumnKeys,
+        dragPreviewOrder: drag.previewOrder,
+    });
 
-        // 2) pinnedColumnKeys 중, 실제로 존재하는 key만 추린다
-        const pinned = pinnedColumnKeys.filter((k) => base.includes(k));
-
-        // 3) pinned가 아닌 컬럼만 추린다
-        const normal = base.filter((k) => !pinned.includes(k));
-
-        // 4) pinned를 항상 맨 앞으로 붙인다
-        return [...pinned, ...normal];
-    }, [columnOrder, visibleKeys, pinnedColumnKeys]);
-
-    const previewOrder = useMemo(() => {
-        const p = drag.previewOrder?.filter((k) => baseOrder.includes(k)) ?? null;
-        if (!p || p.length === 0) return baseOrder;
-        return p;
-    }, [drag.previewOrder, baseOrder]);
-
-    const gridTemplateColumns = useMemo(
-        () => baseOrder.map((k) => `${widthByKey[k] ?? defaultColWidth}px`).join(' '),
-        [baseOrder, widthByKey, defaultColWidth]
-    );
-
-    const baseXByKey = useMemo(() => {
-        const map: Record<string, number> = {};
-        let acc = 0;
-        baseOrder.forEach((k) => {
-            map[k] = acc;
-            acc += widthByKey[k] ?? defaultColWidth;
-        });
-        return map;
-    }, [baseOrder, widthByKey, defaultColWidth]);
-
-    const previewXByKey = useMemo(() => {
-        const map: Record<string, number> = {};
-        let acc = 0;
-        previewOrder.forEach((k) => {
-            map[k] = acc;
-            acc += widthByKey[k] ?? defaultColWidth;
-        });
-        return map;
-    }, [previewOrder, widthByKey, defaultColWidth]);
-
-    const offsetByKey = useMemo(() => {
-        const map: Record<string, number> = {};
-        baseOrder.forEach((k) => {
-            map[k] = (previewXByKey[k] ?? 0) - (baseXByKey[k] ?? 0);
-        });
-        return map;
-    }, [baseOrder, previewXByKey, baseXByKey]);
-
-    const tableMinWidthPx = useMemo(
-        () => baseOrder.reduce((acc, k) => acc + (widthByKey[k] ?? defaultColWidth), 0),
-        [baseOrder, widthByKey, defaultColWidth]
-    );
+    // useGridPointer: wrapper/scroll DOM을 이용해서 pointer(clientX/Y)를 grid 내부 좌표로 변환하고, 드래그 시 삽입 인덱스를 계산
+    const { getXInGrid, getYInGrid, isInsideScrollAreaX, calcInsertIndex } = useGridPointer({
+        wrapperRef,
+        scrollRef,
+        baseOrder,
+        baseXByKey,
+        widthByKey,
+        defaultColWidth,
+    });
 
     const [ghost, setGhost] = useState<DragGhost | null>(null);
     const [headerScrollLeft, setHeaderScrollLeft] = useState(0);
@@ -805,63 +760,8 @@ const AirTableInner = <T,>({
         isSelecting: false,
     });
 
-    const lastMouseClientRef = useRef<{ x: number; y: number } | null>(null);
-
-    useEffect(() => {
-        const handleMove = (ev: PointerEvent) => {
-            lastMouseClientRef.current = { x: ev.clientX, y: ev.clientY };
-        };
-        window.addEventListener('pointermove', handleMove);
-        return () => window.removeEventListener('pointermove', handleMove);
-    }, []);
-
-    const getXInGrid = useCallback(
-        (clientX: number) => {
-            const el = scrollRef.current;
-            if (!el) return clientX;
-            const rect = el.getBoundingClientRect();
-            return clientX - rect.left + el.scrollLeft;
-        },
-        [scrollRef]
-    );
-
-    const getYInGrid = useCallback(
-        (clientY: number) => {
-            const wrap = wrapperRef.current;
-            if (!wrap) return clientY;
-            const rect = wrap.getBoundingClientRect();
-            const scrollTop = scrollRef.current?.scrollTop ?? 0;
-            return clientY - rect.top + scrollTop;
-        },
-        [wrapperRef, scrollRef]
-    );
-
-    const isInsideScrollAreaX = useCallback(
-        (clientX: number) => {
-            const el = scrollRef.current;
-            if (!el) return false;
-            const rect = el.getBoundingClientRect();
-            return clientX >= rect.left && clientX <= rect.right;
-        },
-        [scrollRef]
-    );
-
-    const calcInsertIndex = useCallback(
-        (x: number, draggingKey: string) => {
-            const filtered = baseOrder.filter((k) => k !== draggingKey);
-
-            for (let i = 0; i < filtered.length; i += 1) {
-                const key = filtered[i];
-                const left = baseXByKey[key] ?? 0;
-                const w = widthByKey[key] ?? defaultColWidth;
-                const mid = left + w / 2;
-                if (x < mid) return i;
-            }
-
-            return filtered.length;
-        },
-        [baseOrder, baseXByKey, widthByKey, defaultColWidth]
-    );
+    // useLastPointerPosition: 마지막 마우스/포인터 위치를 ref로 저장해서 autoScroll 같은 로직에서 사용
+    const lastMouseClientRef = useLastPointerPosition();
 
     const getShiftStyle = useCallback(
         (colKey: string): React.CSSProperties => {
@@ -878,24 +778,8 @@ const AirTableInner = <T,>({
         [offsetByKey, drag.draggingKey]
     );
 
-    const getRange = useCallback(() => {
-        if (!selection.start || !selection.end) return null;
-        return {
-            top: Math.min(selection.start.ri, selection.end.ri),
-            bottom: Math.max(selection.start.ri, selection.end.ri),
-            left: Math.min(selection.start.ci, selection.end.ci),
-            right: Math.max(selection.start.ci, selection.end.ci),
-        };
-    }, [selection]);
-
-    const isCellSelected = useCallback(
-        (ri: number, ci: number) => {
-            const r = getRange();
-            if (!r) return false;
-            return ri >= r.top && ri <= r.bottom && ci >= r.left && ci <= r.right;
-        },
-        [getRange]
-    );
+    // useSelectionRange: selection(start/end) 기반으로 드래그 범위 좌표 계산 + 특정 셀이 선택됐는지 판별
+    const { getRange, isCellSelected } = useSelectionRange(selection);
 
     const toggleRowExpanded = useCallback((rowKey: string) => {
         setExpandedRowKeys((prev) => {
@@ -908,265 +792,59 @@ const AirTableInner = <T,>({
 
     const isRowExpanded = useCallback((rowKey: string) => expandedRowKeys.has(rowKey), [expandedRowKeys]);
 
-    useEffect(() => {
-        const shouldAutoScroll = selection.isSelecting || !!drag.draggingKey;
-        if (!shouldAutoScroll) return;
+    // useAutoScroll: 선택 드래그/컬럼 드래그 중, pointer가 가장자리에 가까우면 자동으로 scrollRef를 스크롤
+    useAutoScroll({
+        scrollRef,
+        lastMouseClientRef,
+        enabled: selection.isSelecting || !!drag.draggingKey,
+    });
 
-        let rafId = 0;
+    // useColumnResize: 컬럼 리사이즈 시작/이동/종료 이벤트를 관리하고 resizeColumn을 호출해서 너비를 변경
+    useColumnResize({
+        resizeRef,
+        getXInGrid,
+        resizeColumn,
+    });
 
-        const tick = () => {
-            const scrollEl = scrollRef.current;
-            const last = lastMouseClientRef.current;
-
-            if (!scrollEl || !last) {
-                rafId = requestAnimationFrame(tick);
-                return;
-            }
-
-            const rect = scrollEl.getBoundingClientRect();
-            const edge = 80;
-            const maxSpeed = 48;
-
-            const distLeft = last.x - rect.left;
-            const distRight = rect.right - last.x;
-
-            let dx = 0;
-
-            if (distLeft >= 0 && distLeft < edge) {
-                const ratio = 1 - distLeft / edge;
-                const accel = ratio * ratio;
-                dx = -Math.max(2, Math.round(maxSpeed * accel));
-            } else if (distRight >= 0 && distRight < edge) {
-                const ratio = 1 - distRight / edge;
-                const accel = ratio * ratio;
-                dx = Math.max(2, Math.round(maxSpeed * accel));
-            }
-
-            if (dx !== 0) scrollEl.scrollLeft += dx;
-
-            rafId = requestAnimationFrame(tick);
-        };
-
-        rafId = requestAnimationFrame(tick);
-        return () => cancelAnimationFrame(rafId);
-    }, [selection.isSelecting, drag.draggingKey]);
-
-    useEffect(() => {
-        const handleMove = (ev: MouseEvent) => {
-            const r = resizeRef.current;
-            if (!r) return;
-
-            const x = getXInGrid(ev.clientX);
-            const diff = x - r.startX;
-            const nextWidth = Math.max(MIN_COL_WIDTH, r.startWidth + diff);
-
-            resizeColumn(r.key, nextWidth);
-        };
-
-        const handleUp = () => {
-            if (!resizeRef.current) return;
-            resizeRef.current = null;
-        };
-
-        window.addEventListener('mousemove', handleMove);
-        window.addEventListener('mouseup', handleUp);
-
-        return () => {
-            window.removeEventListener('mousemove', handleMove);
-            window.removeEventListener('mouseup', handleUp);
-        };
-    }, [getXInGrid, resizeColumn]);
-
-    useEffect(() => {
-        const draggingKey = drag.draggingKey;
-        if (!draggingKey) return;
-
-        const finalize = () => {
-            if (resizeRef.current) return;
-
-            const dragging = drag.draggingKey;
-            const final = drag.previewOrder;
-
-            if (!dragging) return;
-
-            if (!final || final.length === 0) {
-                setPreviewOrder(null);
-                endColumnDrag();
-                setGhost(null);
-                return;
-            }
-
-            disableShiftAnimationRef.current = true;
-            commitColumnOrder(final);
-
-            requestAnimationFrame(() => {
-                disableShiftAnimationRef.current = false;
-            });
-
-            setPreviewOrder(null);
-            endColumnDrag();
-            setGhost(null);
-        };
-
-        const handleMove = (ev: MouseEvent) => {
-            if (resizeRef.current) return;
-
-            const x = getXInGrid(ev.clientX);
-            const y = getYInGrid(ev.clientY);
-
-            updateColumnDrag(x);
-
-            setGhost((prev) => {
-                if (!prev) return prev;
-                return { ...prev, offsetX: x - prev.startX, offsetY: y - prev.startY };
-            });
-
-            if (!isInsideScrollAreaX(ev.clientX)) return;
-
-            const insertIndex = calcInsertIndex(x, draggingKey);
-
-            const filtered = baseOrder.filter((k) => k !== draggingKey);
-            const next = [...filtered];
-            next.splice(insertIndex, 0, draggingKey);
-
-            setPreviewOrder(next);
-        };
-
-        const handleUp = () => finalize();
-
-        const handleBlur = () => finalize();
-        const handleContextMenu = () => finalize();
-        const handleDragEnd = () => finalize();
-        const handlePointerUp = () => finalize();
-        const handleKeyDown = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') finalize();
-        };
-        const handleVisibility = () => {
-            if (document.hidden) finalize();
-        };
-        const handleDocMouseLeave = () => finalize();
-
-        window.addEventListener('mousemove', handleMove);
-        window.addEventListener('mouseup', handleUp);
-
-        window.addEventListener('blur', handleBlur);
-        window.addEventListener('contextmenu', handleContextMenu);
-        window.addEventListener('dragend', handleDragEnd);
-        window.addEventListener('pointerup', handlePointerUp);
-        window.addEventListener('keydown', handleKeyDown);
-
-        document.addEventListener('visibilitychange', handleVisibility);
-        document.addEventListener('mouseleave', handleDocMouseLeave);
-
-        return () => {
-            window.removeEventListener('mousemove', handleMove);
-            window.removeEventListener('mouseup', handleUp);
-
-            window.removeEventListener('blur', handleBlur);
-            window.removeEventListener('contextmenu', handleContextMenu);
-            window.removeEventListener('dragend', handleDragEnd);
-            window.removeEventListener('pointerup', handlePointerUp);
-            window.removeEventListener('keydown', handleKeyDown);
-
-            document.removeEventListener('visibilitychange', handleVisibility);
-            document.removeEventListener('mouseleave', handleDocMouseLeave);
-        };
-    }, [
-        drag.draggingKey,
-        drag.previewOrder,
+    // useColumnDrag: 헤더 드래그를 감지해 previewOrder 계산, ghost 표시, 최종 commitColumnOrder까지 수행
+    useColumnDrag({
+        dragKey: drag.draggingKey,
+        resizeRef,
+        dragPreviewOrder: drag.previewOrder,
         baseOrder,
-        calcInsertIndex,
         getXInGrid,
         getYInGrid,
         isInsideScrollAreaX,
-        commitColumnOrder,
-        setPreviewOrder,
+        calcInsertIndex,
         updateColumnDrag,
+        setGhost,
+        setPreviewOrder,
         endColumnDrag,
-    ]);
+        commitColumnOrder,
+        disableShiftAnimationRef,
+    });
 
-    useEffect(() => {
-        const handleUp = () => {
-            if (drag.draggingKey) return;
-            setSelection((prev) => ({ ...prev, isSelecting: false }));
-        };
+    // useSelectionMouseUpEnd: 드래그 중(셀 선택, 컬럼 드래그 등) 마우스 업 시 selection 상태를 종료시키는 역할
+    useSelectionMouseUpEnd({
+        drag,
+        setSelection,
+    });
 
-        window.addEventListener('mouseup', handleUp);
-        return () => window.removeEventListener('mouseup', handleUp);
-    }, [drag.draggingKey]);
+    // useCopySelection: 선택 영역이 존재할 때 Ctrl/Cmd + C 이벤트를 감지해서 선택 영역 데이터를 클립보드로 복사
+    useCopySelection({
+        stateRows: state.rows,
+        baseOrder,
+        getRange,
+        draggingKey: drag.draggingKey,
+    });
 
-    useEffect(() => {
-        const handleCopy = (e: ClipboardEvent) => {
-            const r = getRange();
-            if (!r) return;
-            if (drag.draggingKey) return;
+    // usePinnedStyle: pinned 컬럼을 sticky로 고정시키기 위한 left/zIndex/border 등의 스타일을 계산
+    const { getPinnedStyle } = usePinnedStyle({
+        pinnedColumnKeys,
+        baseXByKey,
+    });
 
-            const tsvRows: string[] = [];
-
-            for (let ri = r.top; ri <= r.bottom; ri += 1) {
-                const row = state.rows[ri];
-                if (!row) continue;
-
-                const line: string[] = [];
-
-                for (let ci = r.left; ci <= r.right; ci += 1) {
-                    const colKey = baseOrder[ci];
-                    const id = `__cell_${row.key}_${colKey}`;
-                    const el = document.getElementById(id);
-                    const text = el?.textContent ?? '';
-                    line.push(text.replace(/\n/g, ' '));
-                }
-
-                tsvRows.push(line.join('\t'));
-            }
-
-            const tsv = tsvRows.join('\n');
-            e.clipboardData?.setData('text/plain', tsv);
-            e.preventDefault();
-        };
-
-        window.addEventListener('copy', handleCopy);
-        return () => window.removeEventListener('copy', handleCopy);
-    }, [state.rows, baseOrder, getRange, drag.draggingKey]);
-
-    const getPinnedStyle = useCallback(
-        (colKey: string, bg?: string, options?: { isHeader?: boolean }): React.CSSProperties => {
-            if (!pinnedColumnKeys.includes(colKey)) return {};
-
-            const isHeader = options?.isHeader === true;
-
-            const left = baseXByKey[colKey] ?? 0;
-
-            return {
-                position: 'sticky',
-                left,
-
-                // ✅ pinned는 반드시 위 레이어로 올라와야 한다
-                zIndex: 50,
-
-                // ✅ pinned는 겹쳐도 배경이 반드시 있어야 한다
-                background: bg ?? '#fff',
-
-                // ✅ pinned 영역 구분선 (오른쪽 border)
-                borderRight: '1px solid rgba(0,0,0,0.08)',
-
-                // ✅ pinned 느낌을 주는 shadow (특히 스크롤할 때)
-                boxShadow: '6px 0 10px rgba(0,0,0,0.06)',
-
-                // ✅ 하위 요소가 섞여서 깨지는 문제 방지
-                backgroundClip: 'padding-box',
-
-                // ✅ sticky 성능 최적화
-                willChange: 'transform',
-
-                // ✅ header 색 유지
-                color: isHeader ? '#fff' : undefined,
-            };
-        },
-        [pinnedColumnKeys, baseXByKey]
-    );
-
-    const value: AirTableContextValue<T> = {
+    const value = {
         props: {
             data,
             columns,
@@ -1178,7 +856,7 @@ const AirTableInner = <T,>({
             style,
             children,
             getRowCanExpand,
-            pinnedColumnKeys, // ✅ 실제 사용 pinned
+            pinnedColumnKeys,
         },
         wrapperRef,
         scrollRef,
@@ -1219,7 +897,6 @@ const AirTableInner = <T,>({
 
         getPinnedStyle,
 
-        // ✅ pinned setter 제공
         pinnedColumnKeys,
         setPinnedColumnKeys,
     };
