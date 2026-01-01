@@ -125,17 +125,6 @@ const ColumnHeaderMenu = ({
             >
                 컬럼 숨기기
             </button>
-
-            {/* <button
-                type="button"
-                style={itemStyle}
-                onClick={() => {
-                    onOpenManageColumns();
-                    onClose();
-                }}
-            >
-                Manage columns
-            </button> */}
         </div>,
         document.body
     );
@@ -164,6 +153,26 @@ export const Header = <T,>({ className, headerCellClassName, resizeHandleClassNa
     const { columnRow, startColumnDrag, setVisibleColumnKeys, visibleColumnKeys } = state;
 
     const [menu, setMenu] = useState<MenuState>({ open: false, colKey: null, x: 0, y: 0 });
+
+    const headerLabelRefMap = useRef<Record<string, HTMLDivElement | null>>({});
+    const [minWidthByKey, setMinWidthByKey] = useState<Record<string, number>>({});
+
+    useEffect(() => {
+        const next: Record<string, number> = {};
+
+        baseOrder.forEach((key) => {
+            const el = headerLabelRefMap.current[key];
+            if (!el) return;
+
+            const labelWidth = el.scrollWidth;
+            const extraPadding = 44;
+            const nextMin = Math.ceil(labelWidth + extraPadding);
+
+            next[key] = Math.max(MIN_COL_WIDTH, nextMin);
+        });
+
+        setMinWidthByKey(next);
+    }, [baseOrder]);
 
     const openMenu = useCallback((colKey: string, e: React.MouseEvent<HTMLButtonElement>) => {
         e.preventDefault();
@@ -212,10 +221,6 @@ export const Header = <T,>({ className, headerCellClassName, resizeHandleClassNa
         }
     }, [targetColKey, visibleColumnKeys, setVisibleColumnKeys, pinnedColumnKeys, setPinnedColumnKeys]);
 
-    const handleOpenManageColumns = useCallback(() => {
-        window.dispatchEvent(new CustomEvent('AIR_TABLE_OPEN_COLUMN_VISIBILITY'));
-    }, []);
-
     const handleResizeMouseDown = useCallback(
         (colKey: string) => (e: React.MouseEvent<HTMLDivElement>) => {
             e.preventDefault();
@@ -227,6 +232,18 @@ export const Header = <T,>({ className, headerCellClassName, resizeHandleClassNa
             resizeRef.current = { key: colKey, startX, startWidth };
         },
         [getXInGrid, widthByKey, defaultColWidth, resizeRef]
+    );
+
+    // ✅✅✅ 더블클릭하면 "최소 너비"로 자동 맞춤
+    const handleResizeDoubleClick = useCallback(
+        (colKey: string) => (e: React.MouseEvent<HTMLDivElement>) => {
+            e.preventDefault();
+            e.stopPropagation();
+
+            const minW = minWidthByKey[colKey] ?? MIN_COL_WIDTH;
+            state.resizeColumn(colKey, minW);
+        },
+        [minWidthByKey, state]
     );
 
     const handleHeaderMouseDown = (colKey: string) => (e: React.MouseEvent<HTMLDivElement>) => {
@@ -256,7 +273,36 @@ export const Header = <T,>({ className, headerCellClassName, resizeHandleClassNa
         });
     };
 
-    // ✅✅✅ hover 시에만 메뉴버튼 보이게 하기 위한 "스타일 주입"
+    useEffect(() => {
+        const handleMove = (ev: MouseEvent) => {
+            const r = resizeRef.current;
+            if (!r) return;
+
+            const x = getXInGrid(ev.clientX);
+            const diff = x - r.startX;
+
+            const raw = r.startWidth + diff;
+
+            const minW = minWidthByKey[r.key] ?? MIN_COL_WIDTH;
+            const next = Math.max(minW, raw);
+
+            state.resizeColumn(r.key, next);
+        };
+
+        const handleUp = () => {
+            if (!resizeRef.current) return;
+            resizeRef.current = null;
+        };
+
+        window.addEventListener('mousemove', handleMove);
+        window.addEventListener('mouseup', handleUp);
+
+        return () => {
+            window.removeEventListener('mousemove', handleMove);
+            window.removeEventListener('mouseup', handleUp);
+        };
+    }, [getXInGrid, minWidthByKey, state.resizeColumn, resizeRef]);
+
     useEffect(() => {
         const styleId = '__air_table_header_menu_btn_style__';
         if (document.getElementById(styleId)) return;
@@ -325,33 +371,43 @@ export const Header = <T,>({ className, headerCellClassName, resizeHandleClassNa
                                 }}
                                 onMouseDown={handleHeaderMouseDown(colKey)}
                             >
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingRight: 26 }}>
-                                    <div style={{ flex: 1, minWidth: 0 }}>{col.render(colKey, data)}</div>
-
-                                    {/* ✅ 메뉴 버튼 (hover 시에만 보임) */}
-                                    <button
-                                        type="button"
-                                        data-col-menu-btn="true"
-                                        onMouseDownCapture={stopOnly}
-                                        onClick={(e) => openMenu(colKey, e)}
-                                        style={{
-                                            width: 22,
-                                            height: 22,
-                                            borderRadius: 6,
-                                            border: 'none',
-                                            background: getThemeColor('White1'),
-                                            color: getThemeColor('Black1'),
-                                            cursor: 'pointer',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            justifyContent: 'center',
-                                            flexShrink: 0,
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingRight: 44 }}>
+                                    <div
+                                        ref={(el) => {
+                                            headerLabelRefMap.current[colKey] = el;
                                         }}
-                                        title="Column menu"
+                                        style={{ flex: 1, minWidth: 0 }}
                                     >
-                                        ⋮
-                                    </button>
+                                        {col.render(colKey, data)}
+                                    </div>
                                 </div>
+
+                                <button
+                                    type="button"
+                                    data-col-menu-btn="true"
+                                    onMouseDownCapture={stopOnly}
+                                    onClick={(e) => openMenu(colKey, e)}
+                                    style={{
+                                        position: 'absolute',
+                                        top: '50%',
+                                        transform: 'translateY(-50%)',
+                                        right: 14,
+                                        width: 22,
+                                        height: 22,
+                                        borderRadius: 6,
+                                        border: 'none',
+                                        background: getThemeColor('White1'),
+                                        color: getThemeColor('Black1'),
+                                        cursor: 'pointer',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        zIndex: 40,
+                                    }}
+                                    title="Column menu"
+                                >
+                                    ⋮
+                                </button>
 
                                 <div
                                     className={resizeHandleClassName}
@@ -361,13 +417,14 @@ export const Header = <T,>({ className, headerCellClassName, resizeHandleClassNa
                                         right: 0,
                                         width: 10,
                                         height: '100%',
-                                        cursor: 'col-resize',
+                                        cursor: 'ew-resize',
                                         zIndex: 60,
                                         display: 'flex',
                                         alignItems: 'center',
                                         justifyContent: 'center',
                                     }}
                                     onMouseDown={handleResizeMouseDown(colKey)}
+                                    onDoubleClick={handleResizeDoubleClick(colKey)} // ✅✅✅ 추가
                                 >
                                     <div
                                         style={{
@@ -390,7 +447,7 @@ export const Header = <T,>({ className, headerCellClassName, resizeHandleClassNa
                 onPinLeft={handlePinLeft}
                 onUnpin={handleUnpin}
                 onHide={handleHideColumn}
-                onOpenManageColumns={handleOpenManageColumns}
+                onOpenManageColumns={() => {}}
                 isPinned={isPinnedTarget}
             />
         </>
