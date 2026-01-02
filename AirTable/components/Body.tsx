@@ -1,3 +1,4 @@
+// src/shared/headless/AirTable/components/Body.tsx
 import React, { useLayoutEffect, useRef, useState } from 'react';
 import type { CellRenderMeta } from '../AirTable';
 import { useAirTableContext } from '../AirTable';
@@ -166,7 +167,7 @@ export const Body = <T,>({
         isRowExpanded,
     } = useAirTableContext<T>();
 
-    const { drag, rows } = state;
+    const { drag, rows, pinnedColumnKeys } = state;
     const { getRowStyle, detailRenderer, getRowCanExpand } = props;
 
     const beginSelect = (ri: number, ci: number) => {
@@ -180,6 +181,12 @@ export const Body = <T,>({
         });
     };
 
+    /** ✅ child row 들여쓰기 폭 */
+    const INDENT_PX = 24;
+
+    /** ✅ 들여쓰기 적용할 대상 컬럼(보통 첫 pinned 컬럼) */
+    const indentTargetKey = pinnedColumnKeys[0] ?? baseOrder[0];
+
     return (
         <div
             className={className}
@@ -188,8 +195,6 @@ export const Body = <T,>({
                 userSelect: 'none',
                 minHeight: 0,
                 minWidth: 0,
-
-                // ✅✅✅ 핵심: Body가 scroll 컨테이너가 되지 못하게 강제 차단
                 overflow: 'visible',
                 maxHeight: 'none',
             }}
@@ -201,16 +206,22 @@ export const Body = <T,>({
                         const rowKey = row.key;
 
                         const canExpand = !!detailRenderer && (getRowCanExpand ? getRowCanExpand(row.item, ri) : true);
+
                         const expanded = canExpand && isRowExpanded(rowKey);
 
                         const rowBg = rowStyle.backgroundColor;
 
+                        /** ✅ meta level 필수 */
                         const meta: CellRenderMeta<T> = {
                             rowKey,
                             ri,
+                            level: row.level, // ✅✅✅ 핵심 fix
                             toggleRowExpanded,
                             isRowExpanded,
                         };
+
+                        /** ✅ row.level 기반으로 child 판단 */
+                        const isChild = row.level > 0;
 
                         return (
                             <React.Fragment key={rowKey}>
@@ -231,6 +242,9 @@ export const Body = <T,>({
                                         const selected = isCellSelected(ri, ci);
                                         const cellBg = selected ? undefined : rowBg ? rowBg : undefined;
 
+                                        const isIndentTarget = colKey === indentTargetKey;
+                                        const indentPadding = isChild ? row.level * INDENT_PX : 0;
+
                                         return (
                                             <div
                                                 key={`c-${rowKey}-${colKey}`}
@@ -241,7 +255,7 @@ export const Body = <T,>({
                                                 ].join(' ')}
                                                 onMouseDown={(e) => {
                                                     if (drag.draggingKey) return;
-                                                    if (e.button !== 0) return; // ✅ 좌클릭만 selection 변경
+                                                    if (e.button !== 0) return;
                                                     e.preventDefault();
 
                                                     const target = e.target as HTMLElement;
@@ -259,7 +273,6 @@ export const Body = <T,>({
                                                     e.preventDefault();
                                                     e.stopPropagation();
 
-                                                    // ✅ 우클릭한 셀이 "기존 선택 영역" 밖이면 그 셀만 선택으로 바꾼다
                                                     const alreadySelected = isCellSelected(ri, ci);
 
                                                     if (!alreadySelected) {
@@ -270,7 +283,6 @@ export const Body = <T,>({
                                                         });
                                                     }
 
-                                                    // ✅ 컨텍스트 메뉴 열기 (Portal 컴포넌트에서 받아서 띄움)
                                                     window.dispatchEvent(
                                                         new CustomEvent('AIR_TABLE_OPEN_CONTEXT_MENU', {
                                                             detail: {
@@ -288,6 +300,11 @@ export const Body = <T,>({
                                                     backgroundColor: cellBg,
                                                     ...getShiftStyle(colKey),
                                                     ...getPinnedStyle(colKey, cellBg ?? '#fff'),
+                                                    ...(isIndentTarget
+                                                        ? {
+                                                              paddingLeft: indentPadding,
+                                                          }
+                                                        : {}),
                                                 }}
                                             >
                                                 {cell.render(row.item, ri, meta)}
