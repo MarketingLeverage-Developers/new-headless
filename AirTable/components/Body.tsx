@@ -241,6 +241,7 @@ export const Body = <T,>({
                                                 ].join(' ')}
                                                 onMouseDown={(e) => {
                                                     if (drag.draggingKey) return;
+                                                    if (e.button !== 0) return; // ✅ 좌클릭만 selection 변경
                                                     e.preventDefault();
 
                                                     const target = e.target as HTMLElement;
