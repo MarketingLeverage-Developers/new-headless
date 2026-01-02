@@ -253,6 +253,37 @@ export const Body = <T,>({
                                                     if (drag.draggingKey) return;
                                                     updateSelect(ri, ci);
                                                 }}
+                                                onContextMenu={(e) => {
+                                                    if (drag.draggingKey) return;
+
+                                                    e.preventDefault();
+                                                    e.stopPropagation();
+
+                                                    // ✅ 우클릭한 셀이 "기존 선택 영역" 밖이면 그 셀만 선택으로 바꾼다
+                                                    const alreadySelected = isCellSelected(ri, ci);
+
+                                                    if (!alreadySelected) {
+                                                        setSelection({
+                                                            start: { ri, ci },
+                                                            end: { ri, ci },
+                                                            isSelecting: false,
+                                                        });
+                                                    }
+
+                                                    // ✅ 컨텍스트 메뉴 열기 (Portal 컴포넌트에서 받아서 띄움)
+                                                    window.dispatchEvent(
+                                                        new CustomEvent('AIR_TABLE_OPEN_CONTEXT_MENU', {
+                                                            detail: {
+                                                                x: e.clientX,
+                                                                y: e.clientY,
+                                                                ri,
+                                                                ci,
+                                                                rowKey: row.key,
+                                                                colKey,
+                                                            },
+                                                        })
+                                                    );
+                                                }}
                                                 style={{
                                                     backgroundColor: cellBg,
                                                     ...getShiftStyle(colKey),

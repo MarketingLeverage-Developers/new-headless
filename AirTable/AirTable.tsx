@@ -18,6 +18,7 @@ import { useCopySelection } from './hooks/useCopySelection';
 import { usePinnedStyle } from './hooks/usePinnedStyle';
 import { useGridMeta } from './hooks/useGridMeta';
 import { useGridPointer } from './hooks/useGridPointer';
+import { CellContextMenuPortal } from './components/CellContextMenuPortal';
 
 /* =========================
    Types
@@ -935,6 +936,7 @@ const AirTableInner = <T,>({
                         </Container>
                     </>
                 )}
+                <CellContextMenuPortal />
             </div>
         </Context.Provider>
     );
@@ -947,6 +949,7 @@ const AirTable = AirTableInner as typeof AirTableInner & {
     Ghost: typeof Ghost;
     RowToggle: typeof RowToggle;
     ColumnSelectBoxPortal: typeof ColumnSelectBoxPortal;
+    CellContextMenuPortal: typeof CellContextMenuPortal;
 };
 
 AirTable.Container = Container;
@@ -955,5 +958,6 @@ AirTable.Body = Body;
 AirTable.Ghost = Ghost;
 AirTable.RowToggle = RowToggle;
 AirTable.ColumnSelectBoxPortal = ColumnSelectBoxPortal;
+AirTable.CellContextMenuPortal = CellContextMenuPortal;
 
 export default AirTable;
