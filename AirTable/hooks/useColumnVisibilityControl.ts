@@ -1,3 +1,5 @@
+// src/shared/headless/AirTable/hooks/useColumnVisibilityControl.ts
+
 import { useAirTableContext } from '../AirTable';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
@@ -25,7 +27,7 @@ export const useColumnVisibilityControl = <T>({ portalId }: Options) => {
 
     const [portalEl, setPortalEl] = useState<HTMLElement | null>(null);
 
-    // ✅ portal target은 "나중에 DOM에 생겨도" 잡히게 해야 함
+    /** ✅ portal target은 "나중에 DOM에 생겨도" 잡히게 해야 함 */
     useLayoutEffect(() => {
         if (!portalId) {
             setPortalEl(null);
@@ -76,13 +78,13 @@ export const useColumnVisibilityControl = <T>({ portalId }: Options) => {
         });
     }, []);
 
-    // ✅ open 되면 rect 계산
+    /** ✅ open 되면 rect 계산 */
     useEffect(() => {
         if (!open) return;
         updateRect();
     }, [open, updateRect]);
 
-    // ✅ 스크롤/리사이즈 시 rect 갱신
+    /** ✅ 스크롤/리사이즈 시 rect 갱신 */
     useEffect(() => {
         if (!open) return;
 
@@ -97,7 +99,7 @@ export const useColumnVisibilityControl = <T>({ portalId }: Options) => {
         };
     }, [open, updateRect]);
 
-    // ✅ 바깥 클릭 닫기
+    /** ✅ 바깥 클릭 닫기 */
     useEffect(() => {
         if (!open) return;
 
@@ -114,7 +116,7 @@ export const useColumnVisibilityControl = <T>({ portalId }: Options) => {
         return () => window.removeEventListener('mousedown', handleOutside);
     }, [open, close]);
 
-    // ✅ 컬럼 on/off
+    /** ✅ 컬럼 on/off */
     const toggleColumn = useCallback(
         (key: string) => {
             const has = visibleColumnKeys.includes(key);
@@ -125,10 +127,12 @@ export const useColumnVisibilityControl = <T>({ portalId }: Options) => {
         [visibleColumnKeys, setVisibleColumnKeys]
     );
 
+    /** ✅ 모두 켜기 */
     const allOn = useCallback(() => {
         setVisibleColumnKeys(allLeafKeys);
     }, [setVisibleColumnKeys, allLeafKeys]);
 
+    /** ✅ 모두 끄기 */
     const allOff = useCallback(() => {
         if (allLeafKeys.length === 0) return;
         setVisibleColumnKeys([allLeafKeys[0]]);
@@ -154,6 +158,10 @@ export const useColumnVisibilityControl = <T>({ portalId }: Options) => {
         // columns
         allLeafColumns,
         visibleColumnKeys,
+
+        /** ✅✅✅ 중요: ManySelect가 사용할 setter 노출 */
+        setVisibleColumnKeys,
+
         toggleColumn,
         allOn,
         allOff,
