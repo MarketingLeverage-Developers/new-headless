@@ -1,11 +1,10 @@
 // src/shared/headless/AirTable/components/Container.tsx
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { useAirTableContext } from '../AirTable';
 
 type ContainerProps = React.HTMLAttributes<HTMLDivElement> & {
     children: React.ReactNode;
-    useScrollContainer?: boolean;
-    height?: number | string; // ✅✅✅ 추가
+    height?: number | string;
 };
 
 const toCssSize = (v?: number | string) => {
@@ -13,61 +12,91 @@ const toCssSize = (v?: number | string) => {
     return v;
 };
 
-export const Container = ({
-    className,
-    children,
-    style,
-    useScrollContainer = true,
-    height,
-    ...rest
-}: ContainerProps) => {
+const findScrollableParent = (el: HTMLElement | null) => {
+    let parent = el?.parentElement ?? null;
+
+    while (parent) {
+        const style = window.getComputedStyle(parent);
+        const overflowY = style.overflowY;
+
+        const canScrollY = overflowY === 'auto' || overflowY === 'scroll';
+        if (canScrollY && parent.scrollHeight > parent.clientHeight + 1) return parent;
+
+        parent = parent.parentElement;
+    }
+
+    return null;
+};
+
+export const Container = ({ className, children, style, height = '100%', ...rest }: ContainerProps) => {
     const { scrollRef } = useAirTableContext<any>();
 
-    /**
-     * ✅ 핵심 규칙
-     * - height prop이 있으면 그걸 최우선으로 적용
-     * - height prop이 없으면 기본은 100%
-     * - style은 height를 제외하고 나머지만 merge
-     */
-    const mergedStyle = useMemo<React.CSSProperties>(() => {
-        const resolvedHeight = toCssSize(height) ?? '100%';
-
-        return {
+    const mergedStyle = useMemo<React.CSSProperties>(
+        () => ({
             display: 'flex',
             flexDirection: 'column',
             width: '100%',
-            height: resolvedHeight, // ✅✅✅ 핵심: height prop 기반
+            height: toCssSize(height) ?? '100%',
             minHeight: 0,
             minWidth: 0,
             position: 'relative',
+            ...style,
+        }),
+        [style, height]
+    );
 
-            /**
-             * ✅ style merge
-             * - 단, style.height가 있다면 height prop과 충돌할 수 있으니,
-             *   height prop이 존재하면 style.height는 무시하고 싶다.
-             */
-            ...(height ? Object.fromEntries(Object.entries(style ?? {}).filter(([k]) => k !== 'height')) : style),
+    useEffect(() => {
+        const el = scrollRef.current;
+        if (!el) return;
+
+        const parentScrollEl = findScrollableParent(el);
+        if (!parentScrollEl) return;
+
+        /** ✅✅✅ 핵심: 외부 스크롤 전달 속도 (0.55~0.75 추천) */
+        const TRANSFER_RATE = 0.65;
+
+        const onWheel = (e: WheelEvent) => {
+            // ✅ 가로 스크롤 의도면 그대로 둠
+            if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
+
+            const { scrollTop, scrollHeight, clientHeight } = el;
+
+            const atTop = scrollTop <= 0;
+            const atBottom = scrollTop + clientHeight >= scrollHeight - 1;
+
+            const goingUp = e.deltaY < 0;
+            const goingDown = e.deltaY > 0;
+
+            const hitTop = atTop && goingUp;
+            const hitBottom = atBottom && goingDown;
+
+            // ✅ 내부가 더 이상 움직일 수 없을 때만 부모 scroll로 넘김
+            if (hitTop || hitBottom) {
+                e.preventDefault();
+
+                // ✅✅✅ 외부 스크롤 델타 감쇠 적용
+                parentScrollEl.scrollTop += e.deltaY * TRANSFER_RATE;
+            }
         };
-    }, [style, height]);
+
+        el.addEventListener('wheel', onWheel, { passive: false });
+        return () => el.removeEventListener('wheel', onWheel);
+    }, [scrollRef]);
 
     return (
         <div className={className} style={mergedStyle} {...rest}>
-            {useScrollContainer ? (
-                <div
-                    ref={scrollRef}
-                    style={{
-                        flex: 1,
-                        minHeight: 0,
-                        minWidth: 0,
-                        overflow: 'auto',
-                        position: 'relative',
-                    }}
-                >
-                    {children}
-                </div>
-            ) : (
-                <>{children}</>
-            )}
+            <div
+                ref={scrollRef}
+                style={{
+                    flex: 1,
+                    minHeight: 0,
+                    minWidth: 0,
+                    overflow: 'auto',
+                    position: 'relative',
+                }}
+            >
+                {children}
+            </div>
         </div>
     );
 };
