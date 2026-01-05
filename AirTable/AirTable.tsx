@@ -65,6 +65,9 @@ export type AirTableProps<T> = {
     /** ✅ flatten props */
     getExpandedRows?: (row: T, ri: number) => T[];
     getRowLevel?: (row: T, ri: number) => number;
+
+    /** ✅✅✅ 추가: 기본으로 펼쳐져 있을 rowKey 목록 */
+    defaultExpandedRowKeys?: string[];
 };
 
 export type DragGhost = {
@@ -724,6 +727,7 @@ const AirTableInner = <T,>({
     pinnedColumnKeys: initialPinnedColumnKeys = [],
     getExpandedRows,
     getRowLevel,
+    defaultExpandedRowKeys = [], // ✅✅✅ 추가
 }: AirTableProps<T>) => {
     const wrapperRef = useRef<HTMLDivElement | null>(null);
     const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -731,7 +735,10 @@ const AirTableInner = <T,>({
 
     const containerWidth = useContainerWidth(wrapperRef);
 
-    const [expandedRowKeys, setExpandedRowKeys] = useState<Set<string>>(() => new Set());
+    /** ✅✅✅ 기본 펼침 rowKey를 Set 초기값으로 사용 */
+    const [expandedRowKeys, setExpandedRowKeys] = useState<Set<string>>(
+        () => new Set(defaultExpandedRowKeys.map(String))
+    );
 
     const state = useTable<T>({
         columns,
@@ -822,13 +829,16 @@ const AirTableInner = <T,>({
     const toggleRowExpanded = useCallback((rowKey: string) => {
         setExpandedRowKeys((prev) => {
             const next = new Set(prev);
-            if (next.has(rowKey)) next.delete(rowKey);
-            else next.add(rowKey);
+            const key = String(rowKey);
+
+            if (next.has(key)) next.delete(key);
+            else next.add(key);
+
             return next;
         });
     }, []);
 
-    const isRowExpanded = useCallback((rowKey: string) => expandedRowKeys.has(rowKey), [expandedRowKeys]);
+    const isRowExpanded = useCallback((rowKey: string) => expandedRowKeys.has(String(rowKey)), [expandedRowKeys]);
 
     useAutoScroll({
         scrollRef,
@@ -891,6 +901,7 @@ const AirTableInner = <T,>({
             pinnedColumnKeys,
             getExpandedRows,
             getRowLevel,
+            defaultExpandedRowKeys, // ✅✅✅ 추가
         },
         wrapperRef,
         scrollRef,
