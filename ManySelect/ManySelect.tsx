@@ -53,7 +53,7 @@ const ManySelect = (({ children, defaultValue = [], value, onChange }: ManySelec
     };
 
     useEffect(() => {
-        console.log('manySelectValue', manySelectValue);
+        // console.log('manySelectValue', manySelectValue);
     }, [manySelectValue]);
 
     return (
