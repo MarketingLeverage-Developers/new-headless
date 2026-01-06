@@ -5,8 +5,10 @@ import { useDropdown } from '../../Dropdown';
 
 type Placement =
     | 'bottom-start'
+    | 'bottom-center' // ✅ 추가
     | 'bottom-end'
     | 'top-start'
+    | 'top-center' // ✅ 추가
     | 'top-end'
     | 'right-start'
     | 'right-end'
@@ -54,19 +56,42 @@ const computePosition = (
     let left = 0;
     let finalPlacement = placement;
 
+    // ✅ placement의 정렬(start/end/center)을 추출하는 함수
+    const getAlign = (pl: Placement) => {
+        if (pl.endsWith('start')) return 'start';
+        if (pl.endsWith('end')) return 'end';
+        return 'center';
+    };
+
     const base = (pl: Placement) => {
+        const align = getAlign(pl);
+
         if (pl.startsWith('bottom')) {
+            // ✅ 아래 배치
             top = anchor.bottom + offset;
-            left = pl.endsWith('start') ? anchor.left : anchor.right - menu.width;
+
+            if (align === 'start') left = anchor.left;
+            else if (align === 'end') left = anchor.right - menu.width;
+            else left = anchor.left + anchor.width / 2 - menu.width / 2; // ✅ center 계산
         } else if (pl.startsWith('top')) {
+            // ✅ 위 배치
             top = anchor.top - menu.height - offset;
-            left = pl.endsWith('start') ? anchor.left : anchor.right - menu.width;
+
+            if (align === 'start') left = anchor.left;
+            else if (align === 'end') left = anchor.right - menu.width;
+            else left = anchor.left + anchor.width / 2 - menu.width / 2; // ✅ center 계산
         } else if (pl.startsWith('right')) {
+            // ✅ 오른쪽 배치
             left = anchor.right + offset;
-            top = pl.endsWith('start') ? anchor.top : anchor.bottom - menu.height;
+
+            if (align === 'start') top = anchor.top;
+            else top = anchor.bottom - menu.height; // ✅ 기존 right는 center 없음 (요청 없어서 유지)
         } else {
+            // ✅ 왼쪽 배치
             left = anchor.left - menu.width - offset;
-            top = pl.endsWith('start') ? anchor.top : anchor.bottom - menu.height;
+
+            if (align === 'start') top = anchor.top;
+            else top = anchor.bottom - menu.height; // ✅ 기존 left는 center 없음 (요청 없어서 유지)
         }
     };
 
@@ -77,13 +102,17 @@ const computePosition = (
         l + menu.width <= viewport.vw - padding;
 
     base(placement);
+
+    // ✅ 화면 밖이면 반대 방향으로 뒤집기
     if (!fits(top, left)) {
         if (placement.startsWith('bottom')) {
-            const alt = (placement.endsWith('start') ? 'top-start' : 'top-end') as Placement;
+            // ✅ bottom -> top (start/end/center 유지)
+            const alt = `top-${getAlign(placement)}` as Placement;
             base(alt);
             if (fits(top, left)) finalPlacement = alt;
         } else if (placement.startsWith('top')) {
-            const alt = (placement.endsWith('start') ? 'bottom-start' : 'bottom-end') as Placement;
+            // ✅ top -> bottom (start/end/center 유지)
+            const alt = `bottom-${getAlign(placement)}` as Placement;
             base(alt);
             if (fits(top, left)) finalPlacement = alt;
         } else if (placement.startsWith('right')) {
@@ -139,12 +168,15 @@ const Content: React.FC<ContentProps> = ({
         const anchorEl = anchorRef.current;
         const menuEl = menuRef.current;
         if (!portalRoot || !anchorEl || !menuEl) return;
+
         const a = anchorEl.getBoundingClientRect();
         const w = menuEl.offsetWidth;
         const h = menuEl.offsetHeight;
         const vw = document.documentElement.clientWidth;
         const vh = document.documentElement.clientHeight;
+
         const pos = computePosition(a, { width: w, height: h }, { vw, vh }, placement, offset, collisionPadding);
+
         setStyle({
             position: 'fixed',
             top: pos.top,
@@ -169,13 +201,17 @@ const Content: React.FC<ContentProps> = ({
         if (!isOpen) return;
         const menuEl = menuRef.current;
         const anchorEl = anchorRef.current;
+
         const ro = new ResizeObserver(() => {
             requestAnimationFrame(() => recalc());
         });
+
         if (menuEl) ro.observe(menuEl);
         if (anchorEl) ro.observe(anchorEl);
+
         const onResize = () => requestAnimationFrame(() => recalc());
         window.addEventListener('resize', onResize, { passive: true });
+
         return () => {
             ro.disconnect();
             window.removeEventListener('resize', onResize);
@@ -197,6 +233,7 @@ const Content: React.FC<ContentProps> = ({
             const menuEl = menuRef.current;
             const anchorEl = anchorRef.current;
             if (!menuEl || !anchorEl) return;
+
             const t = e.target as Node | null;
             if (t && (menuEl.contains(t) || anchorEl.contains(t))) return;
             close();
@@ -212,6 +249,7 @@ const Content: React.FC<ContentProps> = ({
             const menuEl = menuRef.current;
             const anchorEl = anchorRef.current;
             const t = e.target as Node | null;
+
             if (menuEl && t && menuEl.contains(t)) return;
             if (anchorEl && t && anchorEl.contains(t)) return;
             close();
