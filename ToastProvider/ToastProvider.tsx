@@ -15,7 +15,7 @@ export type Toast = {
     /** 닫기 버튼 표시 여부 (기본 true) */
     dismissible?: boolean;
     /** "😊" 같은 이모지 */
-    icon?: string;
+    icon?: string | React.ReactElement;
 };
 
 export type AddToastInput = Omit<Toast, 'id'>;
