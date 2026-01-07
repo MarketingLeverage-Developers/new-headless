@@ -38,6 +38,7 @@ export interface ColumnType<T> {
     render: (item: T, index: number, meta: CellRenderMeta<T>) => React.ReactElement;
     header: (key: string, data: T[]) => React.ReactElement;
     width?: number | string;
+    filter?: React.ReactNode;
 }
 
 export type Column<T> = {
@@ -47,6 +48,7 @@ export type Column<T> = {
     render: (item: T, index: number, meta: CellRenderMeta<T>) => React.ReactElement;
     width?: number | string;
     children?: ColumnType<T>[];
+    filter?: React.ReactNode;
 };
 
 export type AirTableProps<T> = {
@@ -116,6 +118,7 @@ export type UseTableResult<T> = {
             key: string;
             render: (key: string, data?: T[]) => React.ReactElement;
             width: number;
+            filter?: React.ReactNode;
         }[];
     };
     rows: {
@@ -313,6 +316,7 @@ const useTable = <T,>({
                         render,
                         header: col.header,
                         width: col.width,
+                        filter: col.filter,
                     } as ColumnType<T>,
                 ];
             }),
@@ -562,7 +566,12 @@ const useTable = <T,>({
 
     const columnRow = useMemo(() => {
         const headerColumns = orderedLeafColumns.reduce<
-            { key: string; render: (key: string, data?: T[]) => React.ReactElement; width: number }[]
+            {
+                key: string;
+                render: (key: string, data?: T[]) => React.ReactElement;
+                width: number;
+                filter?: React.ReactNode;
+            }[]
         >((acc, col) => {
             if (!visibleColumnKeys.includes(col.key)) return acc;
 
@@ -574,6 +583,7 @@ const useTable = <T,>({
                 key: col.key,
                 render: () => col.header(col.key, data),
                 width: Math.round(Math.max(MIN_COL_WIDTH, w)),
+                filter: col.filter,
             });
 
             return acc;

@@ -9,57 +9,28 @@ type HeaderProps = {
     resizeHandleClassName?: string;
 };
 
-type MenuState = {
-    open: boolean;
-    colKey: string | null;
-    x: number;
-    y: number;
-};
-
 const stopOnly = (e: React.SyntheticEvent) => {
     e.preventDefault();
     e.stopPropagation();
 };
 
-const itemStyle: React.CSSProperties = {
-    width: '100%',
-    border: 'none',
-    outline: 'none',
-    background: 'transparent',
-    padding: '10px 10px',
-    textAlign: 'left',
-    borderRadius: 8,
-    cursor: 'pointer',
-    fontSize: 13,
-};
-
-const dividerStyle: React.CSSProperties = {
-    height: 1,
-    background: 'rgba(0,0,0,0.08)',
-    margin: '6px 0',
-};
-
-const ColumnHeaderMenu = ({
-    menu,
+const ColumnFilterPopup = ({
+    isOpen,
+    x,
+    y,
     onClose,
-    onPinLeft,
-    onUnpin,
-    onHide,
-    onOpenManageColumns,
-    isPinned,
+    children,
 }: {
-    menu: MenuState;
+    isOpen: boolean;
+    x: number;
+    y: number;
     onClose: () => void;
-    onPinLeft: () => void;
-    onUnpin: () => void;
-    onHide: () => void;
-    onOpenManageColumns: () => void;
-    isPinned: boolean;
+    children: React.ReactNode;
 }) => {
     const ref = useRef<HTMLDivElement | null>(null);
 
     useEffect(() => {
-        if (!menu.open) return;
+        if (!isOpen) return;
 
         const handleDown = (ev: MouseEvent) => {
             const el = ref.current;
@@ -79,9 +50,9 @@ const ColumnHeaderMenu = ({
             window.removeEventListener('mousedown', handleDown);
             window.removeEventListener('keydown', handleEsc);
         };
-    }, [menu.open, onClose]);
+    }, [isOpen, onClose]);
 
-    if (!menu.open) return null;
+    if (!isOpen) return null;
     if (typeof document === 'undefined') return null;
 
     return createPortal(
@@ -89,42 +60,20 @@ const ColumnHeaderMenu = ({
             ref={ref}
             style={{
                 position: 'fixed',
-                top: menu.y,
-                left: menu.x,
-                width: 200,
+                top: y,
+                left: x,
+                minWidth: 240,
                 background: getThemeColor('White1'),
                 border: '1px solid rgba(0,0,0,0.08)',
                 borderRadius: 10,
                 boxShadow: '0 12px 24px rgba(0,0,0,0.14)',
                 zIndex: 2147483647,
-                padding: 6,
-                userSelect: 'none',
+                padding: 10,
+                cursor: 'default',
             }}
+            onMouseDown={(e) => e.stopPropagation()}
         >
-            <button
-                type="button"
-                style={itemStyle}
-                onClick={() => {
-                    if (isPinned) onUnpin();
-                    else onPinLeft();
-                    onClose();
-                }}
-            >
-                {isPinned ? '고정 해제' : '컬럼 고정'}
-            </button>
-
-            <div style={dividerStyle} />
-
-            <button
-                type="button"
-                style={itemStyle}
-                onClick={() => {
-                    onHide();
-                    onClose();
-                }}
-            >
-                컬럼 숨기기
-            </button>
+            {children}
         </div>,
         document.body
     );
@@ -146,13 +95,17 @@ export const Header = <T,>({ className, headerCellClassName, resizeHandleClassNa
         setGhost,
         scrollRef,
         pinnedColumnKeys,
-        setPinnedColumnKeys,
     } = useAirTableContext<T>();
 
     const { data, defaultColWidth = 160 } = props;
-    const { columnRow, startColumnDrag, setVisibleColumnKeys, visibleColumnKeys } = state;
+    const { columnRow, startColumnDrag } = state;
 
-    const [menu, setMenu] = useState<MenuState>({ open: false, colKey: null, x: 0, y: 0 });
+    const [filterPopup, setFilterPopup] = useState<{
+        open: boolean;
+        colKey: string | null;
+        x: number;
+        y: number;
+    }>({ open: false, colKey: null, x: 0, y: 0 });
 
     const headerLabelRefMap = useRef<Record<string, HTMLDivElement | null>>({});
     const [minWidthByKey, setMinWidthByKey] = useState<Record<string, number>>({});
@@ -174,52 +127,25 @@ export const Header = <T,>({ className, headerCellClassName, resizeHandleClassNa
         setMinWidthByKey(next);
     }, [baseOrder]);
 
-    const openMenu = useCallback((colKey: string, e: React.MouseEvent<HTMLButtonElement>) => {
+    const openFilter = useCallback((colKey: string, e: React.MouseEvent<HTMLButtonElement>) => {
         e.preventDefault();
         e.stopPropagation();
 
         const rect = e.currentTarget.getBoundingClientRect();
 
-        setMenu({
+        setFilterPopup({
             open: true,
             colKey,
-            x: rect.left - 160,
+            x: rect.left - 200, // Show to left of button to avoid overflow? or right aligned?
+            // Just some offset. Previous was rect.left - 160.
+            // Let's align right edge to button right edge if possible, or just arbitrary
             y: rect.bottom + 8,
         });
     }, []);
 
-    const closeMenu = useCallback(() => {
-        setMenu({ open: false, colKey: null, x: 0, y: 0 });
+    const closeFilter = useCallback(() => {
+        setFilterPopup((prev) => ({ ...prev, open: false }));
     }, []);
-
-    const targetColKey = menu.colKey;
-
-    const isPinnedTarget = useMemo(() => {
-        if (!targetColKey) return false;
-        return pinnedColumnKeys.includes(targetColKey);
-    }, [targetColKey, pinnedColumnKeys]);
-
-    const handlePinLeft = useCallback(() => {
-        if (!targetColKey) return;
-        if (pinnedColumnKeys.includes(targetColKey)) return;
-        setPinnedColumnKeys([...pinnedColumnKeys, targetColKey]);
-    }, [targetColKey, pinnedColumnKeys, setPinnedColumnKeys]);
-
-    const handleUnpin = useCallback(() => {
-        if (!targetColKey) return;
-        setPinnedColumnKeys(pinnedColumnKeys.filter((k) => k !== targetColKey));
-    }, [targetColKey, pinnedColumnKeys, setPinnedColumnKeys]);
-
-    const handleHideColumn = useCallback(() => {
-        if (!targetColKey) return;
-
-        const next = visibleColumnKeys.filter((k) => k !== targetColKey);
-        setVisibleColumnKeys(next);
-
-        if (pinnedColumnKeys.includes(targetColKey)) {
-            setPinnedColumnKeys(pinnedColumnKeys.filter((k) => k !== targetColKey));
-        }
-    }, [targetColKey, visibleColumnKeys, setVisibleColumnKeys, pinnedColumnKeys, setPinnedColumnKeys]);
 
     const handleResizeMouseDown = useCallback(
         (colKey: string) => (e: React.MouseEvent<HTMLDivElement>) => {
@@ -329,6 +255,13 @@ export const Header = <T,>({ className, headerCellClassName, resizeHandleClassNa
         };
     }, []);
 
+    // Resolve filter content if open
+    const activeFilterContent = useMemo(() => {
+        if (!filterPopup.open || !filterPopup.colKey) return null;
+        const col = columnRow.columns.find((c) => c.key === filterPopup.colKey);
+        return col?.filter ?? null;
+    }, [filterPopup.open, filterPopup.colKey, columnRow.columns]);
+
     return (
         <>
             <div
@@ -382,32 +315,45 @@ export const Header = <T,>({ className, headerCellClassName, resizeHandleClassNa
                                     </div>
                                 </div>
 
-                                <button
-                                    type="button"
-                                    data-col-menu-btn="true"
-                                    onMouseDownCapture={stopOnly}
-                                    onClick={(e) => openMenu(colKey, e)}
-                                    style={{
-                                        position: 'absolute',
-                                        top: '50%',
-                                        transform: 'translateY(-50%)',
-                                        right: 14,
-                                        width: 22,
-                                        height: 22,
-                                        borderRadius: 6,
-                                        border: 'none',
-                                        background: getThemeColor('White1'),
-                                        color: getThemeColor('Black1'),
-                                        cursor: 'pointer',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        zIndex: 40,
-                                    }}
-                                    title="Column menu"
-                                >
-                                    ⋮
-                                </button>
+                                {col.filter && (
+                                    <button
+                                        type="button"
+                                        data-col-menu-btn="true"
+                                        onMouseDownCapture={stopOnly}
+                                        onClick={(e) => openFilter(colKey, e)}
+                                        style={{
+                                            position: 'absolute',
+                                            top: '50%',
+                                            transform: 'translateY(-50%)',
+                                            right: 14,
+                                            width: 22,
+                                            height: 22,
+                                            borderRadius: 6,
+                                            border: 'none',
+                                            background: getThemeColor('White1'),
+                                            color: getThemeColor('Black1'),
+                                            cursor: 'pointer',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            zIndex: 40,
+                                        }}
+                                        title="Filter"
+                                    >
+                                        <svg
+                                            width="14"
+                                            height="14"
+                                            viewBox="0 0 24 24"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            strokeWidth="2"
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                        >
+                                            <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+                                        </svg>
+                                    </button>
+                                )}
 
                                 <div
                                     className={resizeHandleClassName}
@@ -441,15 +387,9 @@ export const Header = <T,>({ className, headerCellClassName, resizeHandleClassNa
                 </div>
             </div>
 
-            <ColumnHeaderMenu
-                menu={menu}
-                onClose={closeMenu}
-                onPinLeft={handlePinLeft}
-                onUnpin={handleUnpin}
-                onHide={handleHideColumn}
-                onOpenManageColumns={() => {}}
-                isPinned={isPinnedTarget}
-            />
+            <ColumnFilterPopup isOpen={filterPopup.open} x={filterPopup.x} y={filterPopup.y} onClose={closeFilter}>
+                {activeFilterContent}
+            </ColumnFilterPopup>
         </>
     );
 };
