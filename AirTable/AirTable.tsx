@@ -1,3 +1,5 @@
+// src/shared/headless/AirTable/AirTable.tsx
+
 import React, { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react';
 import { Container } from './components/Container';
 import { Header } from './components/Header';
@@ -262,6 +264,19 @@ const mergeOrderByLeafKeys = (prevOrder: string[], leafKeys: string[]) => {
     });
 
     return uniq(next);
+};
+
+/* =========================
+   ✅✅✅ 추가: rowKey 생성 유틸
+   - 펼침 rowKey가 항상 여기 기준으로 만들어져야 한다
+   ========================= */
+
+const getRowKey = <T,>(params: { item: T; ri: number; rowKeyField?: string }) => {
+    const { item, ri, rowKeyField } = params;
+
+    const rawKey = rowKeyField ? (item as any)[rowKeyField] : undefined;
+
+    return typeof rawKey === 'string' || typeof rawKey === 'number' ? String(rawKey) : `row-${ri}`;
 };
 
 const useTable = <T,>({
@@ -597,8 +612,7 @@ const useTable = <T,>({
         const result: UseTableResult<T>['rows'] = [];
 
         data.forEach((item, ri) => {
-            const rawKey = rowKeyField ? (item as any)[rowKeyField] : undefined;
-            const rowKey = typeof rawKey === 'string' || typeof rawKey === 'number' ? String(rawKey) : `row-${ri}`;
+            const rowKey = getRowKey({ item, ri, rowKeyField });
 
             const level = getRowLevel ? getRowLevel(item, ri) : 0;
 
@@ -688,7 +702,7 @@ type AirTableContextValue<T> = {
     setSelection: React.Dispatch<React.SetStateAction<SelectionState>>;
 
     resizeRef: React.MutableRefObject<{ key: string; startX: number; startWidth: number } | null>;
-    lastMouseClientRef: React.MutableRefObject<{ x: number; y: number } | null>;
+    lastMouseClientRef: React.MutableRefObject<{ x: string; y: string } | null>;
     disableShiftAnimationRef: React.MutableRefObject<boolean>;
 
     getXInGrid: (clientX: number) => number;
@@ -703,6 +717,11 @@ type AirTableContextValue<T> = {
     expandedRowKeys: Set<string>;
     toggleRowExpanded: (rowKey: string) => void;
     isRowExpanded: (rowKey: string) => boolean;
+
+    /** ✅✅✅ 추가: 전체 열기/닫기 */
+    expandAllRows: () => void;
+    collapseAllRows: () => void;
+    isAllExpanded: () => boolean;
 
     getPinnedStyle: (colKey: string, bg?: string, options?: { isHeader?: boolean }) => React.CSSProperties;
 
@@ -749,6 +768,38 @@ const AirTableInner = <T,>({
     const [expandedRowKeys, setExpandedRowKeys] = useState<Set<string>>(
         () => new Set(defaultExpandedRowKeys.map(String))
     );
+
+    /** ✅✅✅ (1) expand 가능한 rowKey 리스트를 만든다 */
+    const expandableRowKeys = useMemo(() => {
+        const keys: string[] = [];
+
+        data.forEach((item, ri) => {
+            const rowKey = getRowKey({ item, ri, rowKeyField: rowKeyField ? String(rowKeyField) : undefined });
+
+            // ✅ getRowCanExpand가 있으면 그것이 기준, 없으면 getExpandedRows 존재 여부로 판단
+            const canExpand = getRowCanExpand ? getRowCanExpand(item, ri) : !!getExpandedRows;
+
+            if (canExpand) keys.push(rowKey);
+        });
+
+        return keys;
+    }, [data, rowKeyField, getRowCanExpand, getExpandedRows]);
+
+    /** ✅✅✅ (2) 전체 열기 */
+    const expandAllRows = useCallback(() => {
+        setExpandedRowKeys(new Set(expandableRowKeys));
+    }, [expandableRowKeys]);
+
+    /** ✅✅✅ (3) 전체 닫기 */
+    const collapseAllRows = useCallback(() => {
+        setExpandedRowKeys(new Set());
+    }, []);
+
+    /** ✅✅✅ (4) 전체가 열려있는지 여부 */
+    const isAllExpanded = useCallback(() => {
+        if (expandableRowKeys.length === 0) return false;
+        return expandableRowKeys.every((k) => expandedRowKeys.has(k));
+    }, [expandableRowKeys, expandedRowKeys]);
 
     const state = useTable<T>({
         columns,
@@ -911,7 +962,7 @@ const AirTableInner = <T,>({
             pinnedColumnKeys,
             getExpandedRows,
             getRowLevel,
-            defaultExpandedRowKeys, // ✅✅✅ 추가
+            defaultExpandedRowKeys,
         },
         wrapperRef,
         scrollRef,
@@ -949,6 +1000,11 @@ const AirTableInner = <T,>({
         expandedRowKeys,
         toggleRowExpanded,
         isRowExpanded,
+
+        /** ✅✅✅ 추가 */
+        expandAllRows,
+        collapseAllRows,
+        isAllExpanded,
 
         getPinnedStyle,
 
