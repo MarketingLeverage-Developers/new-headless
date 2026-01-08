@@ -196,6 +196,7 @@ export const Header = <T,>({ className, headerCellClassName, resizeHandleClassNa
         resizeRef,
         getXInGrid,
         getYInGrid,
+        getShiftStyle,
         getPinnedStyle,
         setGhost,
         scrollRef,
@@ -205,6 +206,8 @@ export const Header = <T,>({ className, headerCellClassName, resizeHandleClassNa
 
     const { data, defaultColWidth = 160 } = props;
     const { columnRow, startColumnDrag, visibleColumnKeys, setVisibleColumnKeys } = state;
+
+    const isDragging = !!state.drag.draggingKey;
 
     const [filterPopup, setFilterPopup] = useState<{
         open: boolean;
@@ -354,36 +357,6 @@ export const Header = <T,>({ className, headerCellClassName, resizeHandleClassNa
         });
     };
 
-    useEffect(() => {
-        const handleMove = (ev: MouseEvent) => {
-            const r = resizeRef.current;
-            if (!r) return;
-
-            const x = getXInGrid(ev.clientX);
-            const diff = x - r.startX;
-
-            const raw = r.startWidth + diff;
-
-            const minW = minWidthByKey[r.key] ?? MIN_COL_WIDTH;
-            const next = Math.max(minW, raw);
-
-            state.resizeColumn(r.key, next);
-        };
-
-        const handleUp = () => {
-            if (!resizeRef.current) return;
-            resizeRef.current = null;
-        };
-
-        window.addEventListener('mousemove', handleMove);
-        window.addEventListener('mouseup', handleUp);
-
-        return () => {
-            window.removeEventListener('mousemove', handleMove);
-            window.removeEventListener('mouseup', handleUp);
-        };
-    }, [getXInGrid, minWidthByKey, state.resizeColumn, resizeRef]);
-
     const activeFilterContent = useMemo(() => {
         if (!filterPopup.open || !filterPopup.colKey) return null;
         const col = columnRow.columns.find((c) => c.key === filterPopup.colKey);
@@ -403,16 +376,13 @@ export const Header = <T,>({ className, headerCellClassName, resizeHandleClassNa
                     position: 'sticky',
                     top: 0,
                     zIndex: 120,
-                    left: 'auto',
-                    right: 'auto',
                     overflow: 'visible',
                     width: 'fit-content',
                     minWidth: '100%',
                 }}
             >
-                {/* ✅✅✅ grid wrapper도 motion.div로 바꾸면 header도 스르륵 됨 */}
                 <motion.div
-                    layout
+                    layout={!isDragging}
                     transition={{ duration: 0.26, ease: [0.22, 1, 0.36, 1] }}
                     style={{
                         display: 'grid',
@@ -429,21 +399,19 @@ export const Header = <T,>({ className, headerCellClassName, resizeHandleClassNa
 
                         return (
                             <motion.div
-                                layout="position"
-                                layoutId={`air-col-header-${colKey}`}
                                 key={`h-${colKey}`}
+                                layout={!isDragging ? 'position' : false}
+                                layoutId={`air-col-header-${colKey}`}
                                 className={[headerCellClassName, 'air-table-header-cell'].filter(Boolean).join(' ')}
                                 style={{
                                     position: 'relative',
                                     cursor: isPinned ? 'default' : 'grab',
                                     userSelect: 'none',
-
-                                    // ✅✅✅ 여기서 getShiftStyle을 제거해야 header도 움직임
+                                    ...(isDragging ? getShiftStyle(colKey) : {}),
                                     ...getPinnedStyle(colKey, getThemeColor('Primary1'), { isHeader: true }),
                                 }}
                                 onMouseDown={handleHeaderMouseDown(colKey)}
-                                onContextMenu={handleContextMenu(colKey)}
-                                transition={{ duration: 0.26, ease: [0.22, 1, 0.36, 1] }}
+                                onContextMenu={handleContextMenu(colKey)} // ✅✅✅ 우클릭 메뉴 살려줌
                             >
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingRight: 44 }}>
                                     <div
@@ -497,6 +465,7 @@ export const Header = <T,>({ className, headerCellClassName, resizeHandleClassNa
                                 )}
 
                                 <div
+                                    className={resizeHandleClassName}
                                     style={{
                                         position: 'absolute',
                                         top: 0,
