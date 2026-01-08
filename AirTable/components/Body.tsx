@@ -170,8 +170,6 @@ export const Body = <T,>({
     const { drag, rows, pinnedColumnKeys } = state;
     const { getRowStyle, detailRenderer, getRowCanExpand } = props;
 
-    const isDragging = !!drag.draggingKey;
-
     const beginSelect = (ri: number, ci: number) => {
         setSelection({ start: { ri, ci }, end: { ri, ci }, isSelecting: true });
     };
@@ -202,14 +200,17 @@ export const Body = <T,>({
                 <div>
                     <AnimatePresence initial={false}>
                         {rows.map((row, ri) => {
-                            const rowStyle = getRowStyle?.(row.item, ri) ?? {};
+                            const rowStyleRaw = getRowStyle?.(row.item, ri) ?? {};
                             const rowKey = row.key;
 
                             const canExpand =
                                 !!detailRenderer && (getRowCanExpand ? getRowCanExpand(row.item, ri) : true);
 
                             const expanded = canExpand && isRowExpanded(rowKey);
-                            const rowBg = rowStyle.backgroundColor;
+                            const rowBg = rowStyleRaw.backgroundColor;
+
+                            // ✅ backgroundColor 제거한 style을 여기서 한번만 계산
+                            const { backgroundColor: _bg, ...rowStyle } = rowStyleRaw;
 
                             const meta: CellRenderMeta<T> = {
                                 rowKey,
@@ -221,14 +222,14 @@ export const Body = <T,>({
 
                             const isChild = row.level > 0;
 
-                            // ✅✅✅ Hook 없이 Map 생성 (row.cells 길이 = 컬럼수라서 매우 가벼움)
-                            const cellMap = new Map<string, (typeof row.cells)[number]>();
-                            row.cells.forEach((c) => cellMap.set(c.key, c));
+                            // ✅✅✅ 성능 핵심: row.cells find() 반복 제거 (O(cols²) → O(cols))
+                            const cellMap = new Map(row.cells.map((c) => [c.key, c]));
 
                             return (
                                 <React.Fragment key={rowKey}>
                                     <motion.div
-                                        layout={!isDragging}
+                                        layout
+                                        layoutId={`air-row-${rowKey}`}
                                         initial={{ opacity: 0, y: -4 }}
                                         animate={{ opacity: 1, y: 0 }}
                                         exit={{ opacity: 0, y: -4 }}
@@ -240,9 +241,7 @@ export const Body = <T,>({
                                         style={{
                                             display: 'grid',
                                             gridTemplateColumns,
-                                            ...Object.fromEntries(
-                                                Object.entries(rowStyle).filter(([k]) => k !== 'backgroundColor')
-                                            ),
+                                            ...rowStyle,
                                         }}
                                     >
                                         {baseOrder.map((colKey, ci) => {
@@ -255,27 +254,21 @@ export const Body = <T,>({
                                             const isIndentTarget = colKey === indentTargetKey;
                                             const indentPadding = isChild ? row.level * INDENT_PX : 0;
 
-                                            // ✅✅✅ 드래그 중이면 div, 아니면 motion.div (layout 계산 최소화)
-                                            const CellTag = isDragging ? 'div' : motion.div;
-
                                             return (
-                                                <CellTag
+                                                <motion.div
+                                                    layout
+                                                    layoutId={`air-cell-${rowKey}-${colKey}`}
                                                     key={`c-${rowKey}-${colKey}`}
-                                                    {...(!isDragging
-                                                        ? {
-                                                              layout: 'position',
-                                                              transition: {
-                                                                  duration: 0.26,
-                                                                  ease: [0.22, 1, 0.36, 1],
-                                                              },
-                                                          }
-                                                        : {})}
                                                     id={`__cell_${row.key}_${colKey}`}
                                                     className={[
                                                         cellClassName ?? '',
                                                         selected ? selectedCellClassName ?? '' : '',
                                                     ].join(' ')}
-                                                    onMouseDown={(e: React.MouseEvent<HTMLDivElement>) => {
+                                                    transition={{
+                                                        duration: 0.26,
+                                                        ease: [0.22, 1, 0.36, 1],
+                                                    }}
+                                                    onMouseDown={(e) => {
                                                         if (drag.draggingKey) return;
                                                         if (e.button !== 0) return;
                                                         e.preventDefault();
@@ -289,7 +282,7 @@ export const Body = <T,>({
                                                         if (drag.draggingKey) return;
                                                         updateSelect(ri, ci);
                                                     }}
-                                                    onContextMenu={(e: React.MouseEvent<HTMLDivElement>) => {
+                                                    onContextMenu={(e) => {
                                                         if (drag.draggingKey) return;
 
                                                         e.preventDefault();
@@ -320,16 +313,13 @@ export const Body = <T,>({
                                                     }}
                                                     style={{
                                                         backgroundColor: cellBg,
-
-                                                        // ✅✅✅ 드래그 중에는 getShiftStyle(transform)만 적용
-                                                        ...(isDragging ? getShiftStyle(colKey) : {}),
-
+                                                        ...getShiftStyle(colKey),
                                                         ...getPinnedStyle(colKey, cellBg ?? '#fff'),
                                                         ...(isIndentTarget ? { paddingLeft: indentPadding } : {}),
                                                     }}
                                                 >
                                                     {cell.render(row.item, ri, meta)}
-                                                </CellTag>
+                                                </motion.div>
                                             );
                                         })}
                                     </motion.div>
