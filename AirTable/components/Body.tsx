@@ -2,7 +2,7 @@ import React, { useLayoutEffect, useRef, useState } from 'react';
 import type { CellRenderMeta } from '../AirTable';
 import { useAirTableContext } from '../AirTable';
 import styles from './Body.module.scss';
-import { AnimatePresence, motion } from 'framer-motion'; // ✅✅✅ 추가
+import { AnimatePresence, motion } from 'framer-motion';
 
 type HeightState = number | 'auto';
 
@@ -181,10 +181,7 @@ export const Body = <T,>({
         });
     };
 
-    /** ✅ child row 들여쓰기 폭 */
     const INDENT_PX = 24;
-
-    /** ✅ 들여쓰기 적용할 대상 컬럼(보통 첫 pinned 컬럼) */
     const indentTargetKey = pinnedColumnKeys[0] ?? baseOrder[0];
 
     return (
@@ -210,7 +207,6 @@ export const Body = <T,>({
                                 !!detailRenderer && (getRowCanExpand ? getRowCanExpand(row.item, ri) : true);
 
                             const expanded = canExpand && isRowExpanded(rowKey);
-
                             const rowBg = rowStyle.backgroundColor;
 
                             const meta: CellRenderMeta<T> = {
@@ -225,13 +221,12 @@ export const Body = <T,>({
 
                             return (
                                 <React.Fragment key={rowKey}>
-                                    {/* ✅✅✅ Row Wrapper를 motion.div로 변경 */}
                                     <motion.div
-                                        layout // ✅✅✅ 핵심: 위치/크기 변화 자동 애니메이션
-                                        layoutId={`air-row-${rowKey}`} // ✅✅✅ 안정성
-                                        initial={{ opacity: 0, y: -4 }} // ✅ 추가 등장 애니메이션
-                                        animate={{ opacity: 1, y: 0 }} // ✅ 유지 상태
-                                        exit={{ opacity: 0, y: -4 }} // ✅ 제거 애니메이션
+                                        layout
+                                        layoutId={`air-row-${rowKey}`}
+                                        initial={{ opacity: 0, y: -4 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        exit={{ opacity: 0, y: -4 }}
                                         transition={{
                                             duration: 0.26,
                                             ease: [0.22, 1, 0.36, 1],
@@ -256,13 +251,20 @@ export const Body = <T,>({
                                             const indentPadding = isChild ? row.level * INDENT_PX : 0;
 
                                             return (
-                                                <div
+                                                // ✅✅✅ 여기만 바뀜: motion.div + layout
+                                                <motion.div
+                                                    layout
+                                                    layoutId={`air-cell-${rowKey}-${colKey}`}
                                                     key={`c-${rowKey}-${colKey}`}
                                                     id={`__cell_${row.key}_${colKey}`}
                                                     className={[
                                                         cellClassName ?? '',
                                                         selected ? selectedCellClassName ?? '' : '',
                                                     ].join(' ')}
+                                                    transition={{
+                                                        duration: 0.26,
+                                                        ease: [0.22, 1, 0.36, 1],
+                                                    }}
                                                     onMouseDown={(e) => {
                                                         if (drag.draggingKey) return;
                                                         if (e.button !== 0) return;
@@ -318,7 +320,7 @@ export const Body = <T,>({
                                                     }}
                                                 >
                                                     {cell.render(row.item, ri, meta)}
-                                                </div>
+                                                </motion.div>
                                             );
                                         })}
                                     </motion.div>

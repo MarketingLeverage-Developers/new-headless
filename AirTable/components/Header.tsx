@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom';
 import { MIN_COL_WIDTH, useAirTableContext } from '../AirTable';
 import { getThemeColor } from '@/shared/utils/css/getThemeColor';
+import { motion } from 'framer-motion';
 
 type HeaderProps = {
     className?: string;
@@ -195,7 +196,6 @@ export const Header = <T,>({ className, headerCellClassName, resizeHandleClassNa
         resizeRef,
         getXInGrid,
         getYInGrid,
-        getShiftStyle,
         getPinnedStyle,
         setGhost,
         scrollRef,
@@ -315,7 +315,6 @@ export const Header = <T,>({ className, headerCellClassName, resizeHandleClassNa
         [getXInGrid, widthByKey, defaultColWidth, resizeRef]
     );
 
-    // ✅✅✅ 더블클릭하면 "최소 너비"로 자동 맞춤
     const handleResizeDoubleClick = useCallback(
         (colKey: string) => (e: React.MouseEvent<HTMLDivElement>) => {
             e.preventDefault();
@@ -330,11 +329,7 @@ export const Header = <T,>({ className, headerCellClassName, resizeHandleClassNa
     const handleHeaderMouseDown = (colKey: string) => (e: React.MouseEvent<HTMLDivElement>) => {
         if (resizeRef.current) return;
         if (pinnedColumnKeys.includes(colKey)) return;
-
-        // e.preventDefault(); // Don't prevent default here if we want context menu? No context menu is Right click.
-        // This is Left click drag. Context menu is handled by onContextMenu.
-
-        if (e.button !== 0) return; // Only process left click for drag
+        if (e.button !== 0) return;
 
         e.preventDefault();
         e.stopPropagation();
@@ -389,33 +384,6 @@ export const Header = <T,>({ className, headerCellClassName, resizeHandleClassNa
         };
     }, [getXInGrid, minWidthByKey, state.resizeColumn, resizeRef]);
 
-    useEffect(() => {
-        const styleId = '__air_table_header_menu_btn_style__';
-        if (document.getElementById(styleId)) return;
-
-        const styleTag = document.createElement('style');
-        styleTag.id = styleId;
-        styleTag.textContent = `
-            .air-table-header-cell [data-col-menu-btn="true"] {
-                opacity: 0;
-                pointer-events: none;
-                transition: opacity 120ms ease;
-            }
-
-            .air-table-header-cell:hover [data-col-menu-btn="true"],
-            .air-table-header-cell:focus-within [data-col-menu-btn="true"] {
-                opacity: 1;
-                pointer-events: auto;
-            }
-        `;
-        document.head.appendChild(styleTag);
-
-        return () => {
-            styleTag.remove();
-        };
-    }, []);
-
-    // Resolve filter content if open
     const activeFilterContent = useMemo(() => {
         if (!filterPopup.open || !filterPopup.colKey) return null;
         const col = columnRow.columns.find((c) => c.key === filterPopup.colKey);
@@ -442,7 +410,10 @@ export const Header = <T,>({ className, headerCellClassName, resizeHandleClassNa
                     minWidth: '100%',
                 }}
             >
-                <div
+                {/* ✅✅✅ grid wrapper도 motion.div로 바꾸면 header도 스르륵 됨 */}
+                <motion.div
+                    layout
+                    transition={{ duration: 0.26, ease: [0.22, 1, 0.36, 1] }}
                     style={{
                         display: 'grid',
                         gridTemplateColumns,
@@ -457,18 +428,22 @@ export const Header = <T,>({ className, headerCellClassName, resizeHandleClassNa
                         const isPinned = pinnedColumnKeys.includes(colKey);
 
                         return (
-                            <div
+                            <motion.div
+                                layout="position"
+                                layoutId={`air-col-header-${colKey}`}
                                 key={`h-${colKey}`}
                                 className={[headerCellClassName, 'air-table-header-cell'].filter(Boolean).join(' ')}
                                 style={{
                                     position: 'relative',
                                     cursor: isPinned ? 'default' : 'grab',
                                     userSelect: 'none',
-                                    ...getShiftStyle(colKey),
+
+                                    // ✅✅✅ 여기서 getShiftStyle을 제거해야 header도 움직임
                                     ...getPinnedStyle(colKey, getThemeColor('Primary1'), { isHeader: true }),
                                 }}
                                 onMouseDown={handleHeaderMouseDown(colKey)}
                                 onContextMenu={handleContextMenu(colKey)}
+                                transition={{ duration: 0.26, ease: [0.22, 1, 0.36, 1] }}
                             >
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingRight: 44 }}>
                                     <div
@@ -522,7 +497,6 @@ export const Header = <T,>({ className, headerCellClassName, resizeHandleClassNa
                                 )}
 
                                 <div
-                                    className={resizeHandleClassName}
                                     style={{
                                         position: 'absolute',
                                         top: 0,
@@ -536,7 +510,7 @@ export const Header = <T,>({ className, headerCellClassName, resizeHandleClassNa
                                         justifyContent: 'center',
                                     }}
                                     onMouseDown={handleResizeMouseDown(colKey)}
-                                    onDoubleClick={handleResizeDoubleClick(colKey)} // ✅✅✅ 추가
+                                    onDoubleClick={handleResizeDoubleClick(colKey)}
                                 >
                                     <div
                                         style={{
@@ -547,10 +521,10 @@ export const Header = <T,>({ className, headerCellClassName, resizeHandleClassNa
                                         }}
                                     />
                                 </div>
-                            </div>
+                            </motion.div>
                         );
                     })}
-                </div>
+                </motion.div>
             </div>
 
             <ColumnFilterPopup isOpen={filterPopup.open} x={filterPopup.x} y={filterPopup.y} onClose={closeFilter}>
