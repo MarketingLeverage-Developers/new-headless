@@ -170,6 +170,8 @@ export const Body = <T,>({
     const { drag, rows, pinnedColumnKeys } = state;
     const { getRowStyle, detailRenderer, getRowCanExpand } = props;
 
+    const isDragging = !!drag.draggingKey;
+
     const beginSelect = (ri: number, ci: number) => {
         setSelection({ start: { ri, ci }, end: { ri, ci }, isSelecting: true });
     };
@@ -219,11 +221,14 @@ export const Body = <T,>({
 
                             const isChild = row.level > 0;
 
+                            // ✅✅✅ Hook 없이 Map 생성 (row.cells 길이 = 컬럼수라서 매우 가벼움)
+                            const cellMap = new Map<string, (typeof row.cells)[number]>();
+                            row.cells.forEach((c) => cellMap.set(c.key, c));
+
                             return (
                                 <React.Fragment key={rowKey}>
                                     <motion.div
-                                        layout
-                                        layoutId={`air-row-${rowKey}`}
+                                        layout={!isDragging}
                                         initial={{ opacity: 0, y: -4 }}
                                         animate={{ opacity: 1, y: 0 }}
                                         exit={{ opacity: 0, y: -4 }}
@@ -241,7 +246,7 @@ export const Body = <T,>({
                                         }}
                                     >
                                         {baseOrder.map((colKey, ci) => {
-                                            const cell = row.cells.find((c) => c.key === colKey);
+                                            const cell = cellMap.get(colKey);
                                             if (!cell) return null;
 
                                             const selected = isCellSelected(ri, ci);
@@ -250,22 +255,27 @@ export const Body = <T,>({
                                             const isIndentTarget = colKey === indentTargetKey;
                                             const indentPadding = isChild ? row.level * INDENT_PX : 0;
 
+                                            // ✅✅✅ 드래그 중이면 div, 아니면 motion.div (layout 계산 최소화)
+                                            const CellTag = isDragging ? 'div' : motion.div;
+
                                             return (
-                                                // ✅✅✅ 여기만 바뀜: motion.div + layout
-                                                <motion.div
-                                                    layout
-                                                    layoutId={`air-cell-${rowKey}-${colKey}`}
+                                                <CellTag
                                                     key={`c-${rowKey}-${colKey}`}
+                                                    {...(!isDragging
+                                                        ? {
+                                                              layout: 'position',
+                                                              transition: {
+                                                                  duration: 0.26,
+                                                                  ease: [0.22, 1, 0.36, 1],
+                                                              },
+                                                          }
+                                                        : {})}
                                                     id={`__cell_${row.key}_${colKey}`}
                                                     className={[
                                                         cellClassName ?? '',
                                                         selected ? selectedCellClassName ?? '' : '',
                                                     ].join(' ')}
-                                                    transition={{
-                                                        duration: 0.26,
-                                                        ease: [0.22, 1, 0.36, 1],
-                                                    }}
-                                                    onMouseDown={(e) => {
+                                                    onMouseDown={(e: React.MouseEvent<HTMLDivElement>) => {
                                                         if (drag.draggingKey) return;
                                                         if (e.button !== 0) return;
                                                         e.preventDefault();
@@ -279,7 +289,7 @@ export const Body = <T,>({
                                                         if (drag.draggingKey) return;
                                                         updateSelect(ri, ci);
                                                     }}
-                                                    onContextMenu={(e) => {
+                                                    onContextMenu={(e: React.MouseEvent<HTMLDivElement>) => {
                                                         if (drag.draggingKey) return;
 
                                                         e.preventDefault();
@@ -310,17 +320,16 @@ export const Body = <T,>({
                                                     }}
                                                     style={{
                                                         backgroundColor: cellBg,
-                                                        ...getShiftStyle(colKey),
+
+                                                        // ✅✅✅ 드래그 중에는 getShiftStyle(transform)만 적용
+                                                        ...(isDragging ? getShiftStyle(colKey) : {}),
+
                                                         ...getPinnedStyle(colKey, cellBg ?? '#fff'),
-                                                        ...(isIndentTarget
-                                                            ? {
-                                                                  paddingLeft: indentPadding,
-                                                              }
-                                                            : {}),
+                                                        ...(isIndentTarget ? { paddingLeft: indentPadding } : {}),
                                                     }}
                                                 >
                                                     {cell.render(row.item, ri, meta)}
-                                                </motion.div>
+                                                </CellTag>
                                             );
                                         })}
                                     </motion.div>
