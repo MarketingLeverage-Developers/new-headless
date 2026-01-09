@@ -168,7 +168,7 @@ export const Body = <T,>({
     } = useAirTableContext<T>();
 
     const { drag, rows, pinnedColumnKeys } = state;
-    const { getRowStyle, detailRenderer, getRowCanExpand } = props;
+    const { getRowStyle, detailRenderer, getRowCanExpand, enableAnimation = false } = props;
 
     const beginSelect = (ri: number, ci: number) => {
         setSelection({ start: { ri, ci }, end: { ri, ci }, isSelecting: true });
@@ -198,8 +198,147 @@ export const Body = <T,>({
         >
             <div ref={tableAreaRef} style={{ position: 'relative', minWidth: 'fit-content', width: 'fit-content' }}>
                 <div>
-                    <AnimatePresence initial={false}>
-                        {rows.map((row, ri) => {
+                    {enableAnimation ? (
+                        <AnimatePresence initial={false}>
+                            {rows.map((row, ri) => {
+                                const rowStyleRaw = getRowStyle?.(row.item, ri) ?? {};
+                                const rowKey = row.key;
+
+                                const canExpand =
+                                    !!detailRenderer && (getRowCanExpand ? getRowCanExpand(row.item, ri) : true);
+
+                                const expanded = canExpand && isRowExpanded(rowKey);
+                                const rowBg = rowStyleRaw.backgroundColor;
+
+                                const { backgroundColor: _bg, ...rowStyle } = rowStyleRaw;
+
+                                const meta: CellRenderMeta<T> = {
+                                    rowKey,
+                                    ri,
+                                    level: row.level,
+                                    toggleRowExpanded,
+                                    isRowExpanded,
+                                };
+
+                                const isChild = row.level > 0;
+
+                                const cellMap = new Map(row.cells.map((c) => [c.key, c]));
+
+                                return (
+                                    <React.Fragment key={rowKey}>
+                                        <motion.div
+                                            layout
+                                            layoutId={`air-row-${rowKey}`}
+                                            initial={{ opacity: 0, y: -4 }}
+                                            animate={{ opacity: 1, y: 0 }}
+                                            exit={{ opacity: 0, y: -4 }}
+                                            transition={{
+                                                duration: 0.26,
+                                                ease: [0.22, 1, 0.36, 1],
+                                            }}
+                                            className={rowClassName}
+                                            style={{
+                                                display: 'grid',
+                                                gridTemplateColumns,
+                                                ...rowStyle,
+                                            }}
+                                        >
+                                            {baseOrder.map((colKey, ci) => {
+                                                const cell = cellMap.get(colKey);
+                                                if (!cell) return null;
+
+                                                const selected = isCellSelected(ri, ci);
+                                                const cellBg = selected ? undefined : rowBg ? rowBg : undefined;
+
+                                                const isIndentTarget = colKey === indentTargetKey;
+                                                const indentPadding = isChild ? row.level * INDENT_PX : 0;
+
+                                                return (
+                                                    <motion.div
+                                                        layout
+                                                        layoutId={`air-cell-${rowKey}-${colKey}`}
+                                                        key={`c-${rowKey}-${colKey}`}
+                                                        id={`__cell_${row.key}_${colKey}`}
+                                                        className={[
+                                                            cellClassName ?? '',
+                                                            selected ? selectedCellClassName ?? '' : '',
+                                                        ].join(' ')}
+                                                        transition={{
+                                                            duration: 0.26,
+                                                            ease: [0.22, 1, 0.36, 1],
+                                                        }}
+                                                        onMouseDown={(e) => {
+                                                            if (drag.draggingKey) return;
+                                                            if (e.button !== 0) return;
+                                                            e.preventDefault();
+
+                                                            const target = e.target as HTMLElement;
+                                                            if (target.closest('[data-row-toggle="true"]')) return;
+
+                                                            beginSelect(ri, ci);
+                                                        }}
+                                                        onMouseEnter={() => {
+                                                            if (drag.draggingKey) return;
+                                                            updateSelect(ri, ci);
+                                                        }}
+                                                        onContextMenu={(e) => {
+                                                            if (drag.draggingKey) return;
+
+                                                            e.preventDefault();
+                                                            e.stopPropagation();
+
+                                                            const alreadySelected = isCellSelected(ri, ci);
+
+                                                            if (!alreadySelected) {
+                                                                setSelection({
+                                                                    start: { ri, ci },
+                                                                    end: { ri, ci },
+                                                                    isSelecting: false,
+                                                                });
+                                                            }
+
+                                                            window.dispatchEvent(
+                                                                new CustomEvent('AIR_TABLE_OPEN_CONTEXT_MENU', {
+                                                                    detail: {
+                                                                        x: e.clientX,
+                                                                        y: e.clientY,
+                                                                        ri,
+                                                                        ci,
+                                                                        rowKey: row.key,
+                                                                        colKey,
+                                                                    },
+                                                                })
+                                                            );
+                                                        }}
+                                                        style={{
+                                                            backgroundColor: cellBg,
+                                                            ...getShiftStyle(colKey),
+                                                            ...getPinnedStyle(colKey, cellBg ?? '#fff'),
+                                                            ...(isIndentTarget ? { paddingLeft: indentPadding } : {}),
+                                                        }}
+                                                    >
+                                                        {cell.render(row.item, ri, meta)}
+                                                    </motion.div>
+                                                );
+                                            })}
+                                        </motion.div>
+
+                                        {canExpand && (
+                                            <ExpandableDetailRow
+                                                expanded={expanded}
+                                                gridTemplateColumns={gridTemplateColumns}
+                                                rowClassName={detailRowClassName}
+                                                cellClassName={detailCellClassName}
+                                            >
+                                                {detailRenderer?.({ row: row.item, ri })}
+                                            </ExpandableDetailRow>
+                                        )}
+                                    </React.Fragment>
+                                );
+                            })}
+                        </AnimatePresence>
+                    ) : (
+                        rows.map((row, ri) => {
                             const rowStyleRaw = getRowStyle?.(row.item, ri) ?? {};
                             const rowKey = row.key;
 
@@ -209,7 +348,6 @@ export const Body = <T,>({
                             const expanded = canExpand && isRowExpanded(rowKey);
                             const rowBg = rowStyleRaw.backgroundColor;
 
-                            // ✅ backgroundColor 제거한 style을 여기서 한번만 계산
                             const { backgroundColor: _bg, ...rowStyle } = rowStyleRaw;
 
                             const meta: CellRenderMeta<T> = {
@@ -222,21 +360,11 @@ export const Body = <T,>({
 
                             const isChild = row.level > 0;
 
-                            // ✅✅✅ 성능 핵심: row.cells find() 반복 제거 (O(cols²) → O(cols))
                             const cellMap = new Map(row.cells.map((c) => [c.key, c]));
 
                             return (
                                 <React.Fragment key={rowKey}>
-                                    <motion.div
-                                        layout
-                                        layoutId={`air-row-${rowKey}`}
-                                        initial={{ opacity: 0, y: -4 }}
-                                        animate={{ opacity: 1, y: 0 }}
-                                        exit={{ opacity: 0, y: -4 }}
-                                        transition={{
-                                            duration: 0.26,
-                                            ease: [0.22, 1, 0.36, 1],
-                                        }}
+                                    <div
                                         className={rowClassName}
                                         style={{
                                             display: 'grid',
@@ -255,19 +383,13 @@ export const Body = <T,>({
                                             const indentPadding = isChild ? row.level * INDENT_PX : 0;
 
                                             return (
-                                                <motion.div
-                                                    layout
-                                                    layoutId={`air-cell-${rowKey}-${colKey}`}
+                                                <div
                                                     key={`c-${rowKey}-${colKey}`}
                                                     id={`__cell_${row.key}_${colKey}`}
                                                     className={[
                                                         cellClassName ?? '',
                                                         selected ? selectedCellClassName ?? '' : '',
                                                     ].join(' ')}
-                                                    transition={{
-                                                        duration: 0.26,
-                                                        ease: [0.22, 1, 0.36, 1],
-                                                    }}
                                                     onMouseDown={(e) => {
                                                         if (drag.draggingKey) return;
                                                         if (e.button !== 0) return;
@@ -319,10 +441,10 @@ export const Body = <T,>({
                                                     }}
                                                 >
                                                     {cell.render(row.item, ri, meta)}
-                                                </motion.div>
+                                                </div>
                                             );
                                         })}
-                                    </motion.div>
+                                    </div>
 
                                     {canExpand && (
                                         <ExpandableDetailRow
@@ -336,8 +458,8 @@ export const Body = <T,>({
                                     )}
                                 </React.Fragment>
                             );
-                        })}
-                    </AnimatePresence>
+                        })
+                    )}
                 </div>
             </div>
         </div>

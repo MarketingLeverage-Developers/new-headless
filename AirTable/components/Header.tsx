@@ -207,6 +207,8 @@ export const Header = <T,>({ className, headerCellClassName, resizeHandleClassNa
     const { data, defaultColWidth = 160 } = props;
     const { columnRow, startColumnDrag, visibleColumnKeys, setVisibleColumnKeys } = state;
 
+    const enableAnimation = props.enableAnimation ?? false;
+
     const isDragging = !!state.drag.draggingKey;
 
     const [filterPopup, setFilterPopup] = useState<{
@@ -368,6 +370,9 @@ export const Header = <T,>({ className, headerCellClassName, resizeHandleClassNa
         return pinnedColumnKeys.includes(contextMenu.colKey);
     }, [contextMenu.colKey, pinnedColumnKeys]);
 
+    const OuterWrapper = enableAnimation ? motion.div : 'div';
+    const HeaderCellWrapper = enableAnimation ? motion.div : 'div';
+
     return (
         <>
             <div
@@ -381,9 +386,13 @@ export const Header = <T,>({ className, headerCellClassName, resizeHandleClassNa
                     minWidth: '100%',
                 }}
             >
-                <motion.div
-                    layout={!isDragging}
-                    transition={{ duration: 0.26, ease: [0.22, 1, 0.36, 1] }}
+                <OuterWrapper
+                    {...(enableAnimation
+                        ? {
+                              layout: !isDragging,
+                              transition: { duration: 0.26, ease: [0.22, 1, 0.36, 1] },
+                          }
+                        : {})}
                     style={{
                         display: 'grid',
                         gridTemplateColumns,
@@ -398,10 +407,14 @@ export const Header = <T,>({ className, headerCellClassName, resizeHandleClassNa
                         const isPinned = pinnedColumnKeys.includes(colKey);
 
                         return (
-                            <motion.div
+                            <HeaderCellWrapper
+                                {...(enableAnimation
+                                    ? {
+                                          layout: !isDragging ? 'position' : false,
+                                          layoutId: `air-col-header-${colKey}`,
+                                      }
+                                    : {})}
                                 key={`h-${colKey}`}
-                                layout={!isDragging ? 'position' : false}
-                                layoutId={`air-col-header-${colKey}`}
                                 className={[headerCellClassName, 'air-table-header-cell'].filter(Boolean).join(' ')}
                                 style={{
                                     position: 'relative',
@@ -411,7 +424,7 @@ export const Header = <T,>({ className, headerCellClassName, resizeHandleClassNa
                                     ...getPinnedStyle(colKey, getThemeColor('Primary1'), { isHeader: true }),
                                 }}
                                 onMouseDown={handleHeaderMouseDown(colKey)}
-                                onContextMenu={handleContextMenu(colKey)} // ✅✅✅ 우클릭 메뉴 살려줌
+                                onContextMenu={handleContextMenu(colKey)}
                             >
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingRight: 44 }}>
                                     <div
@@ -490,10 +503,10 @@ export const Header = <T,>({ className, headerCellClassName, resizeHandleClassNa
                                         }}
                                     />
                                 </div>
-                            </motion.div>
+                            </HeaderCellWrapper>
                         );
                     })}
-                </motion.div>
+                </OuterWrapper>
             </div>
 
             <ColumnFilterPopup isOpen={filterPopup.open} x={filterPopup.x} y={filterPopup.y} onClose={closeFilter}>
