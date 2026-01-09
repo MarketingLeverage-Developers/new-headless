@@ -72,6 +72,7 @@ export type AirTableProps<T> = {
 
     /** ✅✅✅ 추가: 기본으로 펼쳐져 있을 rowKey 목록 */
     defaultExpandedRowKeys?: string[];
+    enableAnimation?: boolean;
 };
 
 export type DragGhost = {
@@ -757,6 +758,7 @@ const AirTableInner = <T,>({
     getExpandedRows,
     getRowLevel,
     defaultExpandedRowKeys = [], // ✅✅✅ 추가
+    enableAnimation,
 }: AirTableProps<T>) => {
     const wrapperRef = useRef<HTMLDivElement | null>(null);
     const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -963,6 +965,7 @@ const AirTableInner = <T,>({
             getExpandedRows,
             getRowLevel,
             defaultExpandedRowKeys,
+            enableAnimation,
         },
         wrapperRef,
         scrollRef,
