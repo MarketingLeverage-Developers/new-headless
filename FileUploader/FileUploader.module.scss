@@ -7,11 +7,12 @@
 }
 
 /* 화면 전체 드래그 수신 오버레이 */
+// 여러개를 뿌렸을시 드랍존이 꼬임
 .EventsCatcher {
-    position: fixed;
-    inset: 0;
-    pointer-events: none;
-    z-index: 9999;
+    // position: fixed;
+    // inset: 0;
+    // pointer-events: none;
+    // z-index: 9999;
 }
 
 .EventsCatcher[data-dragging='true'] {

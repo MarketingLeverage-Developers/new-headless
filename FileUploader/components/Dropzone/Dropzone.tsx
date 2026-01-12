@@ -8,7 +8,8 @@ type Props = {
 };
 
 export const Dropzone: React.FC<Props> = ({ children, mode = { kind: 'any', accept: '*/*' } }) => {
-    const { dragging, openFileDialog, addFiles } = useFileUploader();
+    const { openFileDialog, addFiles } = useFileUploader();
+    const [dragging, setDragging] = React.useState(false);
 
     const content =
         typeof children === 'function' ? children({ dragging, open: () => openFileDialog(mode) }) : children;
@@ -23,13 +24,25 @@ export const Dropzone: React.FC<Props> = ({ children, mode = { kind: 'any', acce
             onKeyDown={(e) => {
                 if (e.key === 'Enter' || e.key === ' ') openFileDialog(mode);
             }}
+            onDragEnter={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setDragging(true);
+            }}
             onDragOver={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
+                setDragging(true);
+            }}
+            onDragLeave={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setDragging(false);
             }}
             onDrop={async (e) => {
                 e.preventDefault();
                 e.stopPropagation();
+                setDragging(false);
                 const files = e.dataTransfer?.files;
                 if (files?.length) await addFiles(files, mode);
                 e.dataTransfer?.clearData();
@@ -40,4 +53,4 @@ export const Dropzone: React.FC<Props> = ({ children, mode = { kind: 'any', acce
     );
 };
 
-export default Dropzone;
+// export default Dropzone;
