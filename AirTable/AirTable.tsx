@@ -53,6 +53,8 @@ export type Column<T> = {
     filter?: React.ReactNode;
 };
 
+// src/shared/headless/AirTable/AirTable.tsx
+
 export type AirTableProps<T> = {
     data: T[];
     columns: Column<T>[];
@@ -65,14 +67,13 @@ export type AirTableProps<T> = {
     style?: React.CSSProperties;
     children?: React.ReactNode;
     pinnedColumnKeys?: string[];
-
-    /** ✅ flatten props */
     getExpandedRows?: (row: T, ri: number) => T[];
     getRowLevel?: (row: T, ri: number) => number;
-
-    /** ✅✅✅ 추가: 기본으로 펼쳐져 있을 rowKey 목록 */
     defaultExpandedRowKeys?: string[];
     enableAnimation?: boolean;
+
+    /** ✅ 추가: 남는 폭 채우기 on/off */
+    fillContainerWidth?: boolean;
 };
 
 export type DragGhost = {
@@ -759,6 +760,8 @@ const AirTableInner = <T,>({
     getRowLevel,
     defaultExpandedRowKeys = [],
     enableAnimation,
+
+    fillContainerWidth = true, // ✅ 기본은 켜두고(원하면 false로 바꿔도 됨)
 }: AirTableProps<T>) => {
     const wrapperRef = useRef<HTMLDivElement | null>(null);
     const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -840,6 +843,7 @@ const AirTableInner = <T,>({
         pinnedColumnKeys,
         dragPreviewOrder: drag.previewOrder,
         containerWidthPx: containerWidth, // ✅ 추가
+        fillContainerWidth,
     });
 
     const { getXInGrid, getYInGrid, isInsideScrollAreaX, calcInsertIndex } = useGridPointer({
