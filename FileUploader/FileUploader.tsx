@@ -178,6 +178,8 @@ const FileUploader = (({
     className,
     ...props
 }: FileUploaderProps) => {
+    const lastDialogModeRef = useRef<AddMode>({ kind: 'any', accept: '*/*', multiple });
+
     const isControlled = value !== undefined;
     const [internalValue, setInternalValue] = useState<FileItem[]>(normalize(defaultValue ?? []));
     const currentValue = useMemo<FileItem[]>(
@@ -335,10 +337,28 @@ const FileUploader = (({
 
     const inputRef = useRef<HTMLInputElement | null>(null);
     const openFileDialog = (mode: AddMode = { kind: 'any', accept: '*/*' }) => {
-        const nextAccept = mode.kind === 'image' ? mode.accept ?? 'image/*' : mode.accept ?? '*/*';
+        const nextAccept =
+            mode.kind === 'image'
+                ? mode.accept ?? 'image/*'
+                : mode.kind === 'file'
+                ? mode.accept ?? '*/*'
+                : mode.accept ?? '*/*';
 
+        const nextMultiple = mode.multiple ?? multiple;
+
+        // ✅ onChange에서 쓸 모드 (가장 중요)
+        lastDialogModeRef.current = { ...mode, accept: nextAccept, multiple: nextMultiple };
+
+        // ✅ DOM 먼저 반영
+        if (inputRef.current) {
+            inputRef.current.accept = nextAccept;
+            inputRef.current.multiple = nextMultiple;
+        }
+
+        // state는 표시용/동기화용으로 유지
         setDialogAccept(nextAccept);
-        setDialogMultiple(mode.multiple ?? multiple); // ✅ 모드 우선
+        setDialogMultiple(nextMultiple);
+
         inputRef.current?.click();
     };
 
@@ -438,10 +458,14 @@ const FileUploader = (({
                     onChange={async (e) => {
                         const el = e.currentTarget;
                         const files = el.files;
+
                         try {
-                            if (files) await addFiles(files, { kind: 'any', accept: dialogAccept });
+                            if (files) {
+                                const mode = lastDialogModeRef.current ?? { kind: 'any', accept: '*/*', multiple };
+                                await addFiles(files, mode);
+                            }
                         } finally {
-                            if (el) el.value = '';
+                            el.value = '';
                         }
                     }}
                     tabIndex={-1}

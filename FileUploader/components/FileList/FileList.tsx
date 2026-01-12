@@ -27,11 +27,11 @@ export const FileList: React.FC<FileListProps> = ({ renderItem, children, onlyFi
         <div {...props} className={fileListClassName}>
             {list.map((it, idx) =>
                 renderItem ? (
-                    <React.Fragment key={it.id}>
+                    <React.Fragment key={`${it.id}-${idx}`}>
                         {renderItem(it, idx, { remove: () => removeById(it.id) })}
                     </React.Fragment>
                 ) : (
-                    <div key={it.id} className={styles.FileItem}>
+                    <div key={`${it.id}-${idx}`} className={styles.FileItem}>
                         <span className={styles.FileName}>{it.name}</span>
                         <button className={styles.RemoveButton} type="button" onClick={() => removeById(it.id)}>
                             삭제

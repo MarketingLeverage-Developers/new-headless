@@ -25,12 +25,12 @@ export const ImageList: React.FC<Props> = ({ renderItem, children, imgProps, ...
         <div {...props} className={imageListClassName}>
             {images.map((it, idx) =>
                 renderItem ? (
-                    <React.Fragment key={it.id}>
+                    <React.Fragment key={`${it.id}-${idx}`}>
                         {renderItem(it, idx, { remove: () => removeById(it.id) })}
                     </React.Fragment>
                 ) : (
-                    <div key={it.id} className={styles.ImageItem}>
-                        {it.url ? (
+                    <div key={`${it.id}-${idx}`} className={styles.ImageItem}>
+                        {it ? (
                             <img className={styles.Preview} src={it.url} alt={it.name ?? it.id} {...imgProps} />
                         ) : null}
                         <button className={styles.RemoveButton} type="button" onClick={() => removeById(it.id)}>
