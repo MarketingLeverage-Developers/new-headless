@@ -757,7 +757,7 @@ const AirTableInner = <T,>({
     pinnedColumnKeys: initialPinnedColumnKeys = [],
     getExpandedRows,
     getRowLevel,
-    defaultExpandedRowKeys = [], // ✅✅✅ 추가
+    defaultExpandedRowKeys = [],
     enableAnimation,
 }: AirTableProps<T>) => {
     const wrapperRef = useRef<HTMLDivElement | null>(null);
@@ -766,38 +766,30 @@ const AirTableInner = <T,>({
 
     const containerWidth = useContainerWidth(wrapperRef);
 
-    /** ✅✅✅ 기본 펼침 rowKey를 Set 초기값으로 사용 */
     const [expandedRowKeys, setExpandedRowKeys] = useState<Set<string>>(
         () => new Set(defaultExpandedRowKeys.map(String))
     );
 
-    /** ✅✅✅ (1) expand 가능한 rowKey 리스트를 만든다 */
     const expandableRowKeys = useMemo(() => {
         const keys: string[] = [];
 
         data.forEach((item, ri) => {
             const rowKey = getRowKey({ item, ri, rowKeyField: rowKeyField ? String(rowKeyField) : undefined });
-
-            // ✅ getRowCanExpand가 있으면 그것이 기준, 없으면 getExpandedRows 존재 여부로 판단
             const canExpand = getRowCanExpand ? getRowCanExpand(item, ri) : !!getExpandedRows;
-
             if (canExpand) keys.push(rowKey);
         });
 
         return keys;
     }, [data, rowKeyField, getRowCanExpand, getExpandedRows]);
 
-    /** ✅✅✅ (2) 전체 열기 */
     const expandAllRows = useCallback(() => {
         setExpandedRowKeys(new Set(expandableRowKeys));
     }, [expandableRowKeys]);
 
-    /** ✅✅✅ (3) 전체 닫기 */
     const collapseAllRows = useCallback(() => {
         setExpandedRowKeys(new Set());
     }, []);
 
-    /** ✅✅✅ (4) 전체가 열려있는지 여부 */
     const isAllExpanded = useCallback(() => {
         if (expandableRowKeys.length === 0) return false;
         return expandableRowKeys.every((k) => expandedRowKeys.has(k));
@@ -840,13 +832,14 @@ const AirTableInner = <T,>({
         return map;
     }, [columnRow.columns]);
 
-    const { baseOrder, gridTemplateColumns, baseXByKey, offsetByKey, tableMinWidthPx } = useGridMeta({
+    const { baseOrder, gridTemplateColumns, baseXByKey, offsetByKey, tableMinWidthPx, layoutWidthByKey } = useGridMeta({
         columnOrder,
         visibleKeys,
         widthByKey,
         defaultColWidth,
         pinnedColumnKeys,
         dragPreviewOrder: drag.previewOrder,
+        containerWidthPx: containerWidth, // ✅ 추가
     });
 
     const { getXInGrid, getYInGrid, isInsideScrollAreaX, calcInsertIndex } = useGridPointer({
@@ -854,7 +847,7 @@ const AirTableInner = <T,>({
         scrollRef,
         baseOrder,
         baseXByKey,
-        widthByKey,
+        widthByKey: layoutWidthByKey, // ✅ 변경 (pointer도 “채움 반영” 폭 기준)
         defaultColWidth,
     });
 
@@ -974,7 +967,9 @@ const AirTableInner = <T,>({
 
         baseOrder,
         gridTemplateColumns,
-        widthByKey,
+
+        // ✅ 변경: Context의 widthByKey도 “레이아웃용 폭”으로 (Header/Body/Pointer 모두 일치)
+        widthByKey: layoutWidthByKey,
         baseXByKey,
         offsetByKey,
 
@@ -1004,7 +999,6 @@ const AirTableInner = <T,>({
         toggleRowExpanded,
         isRowExpanded,
 
-        /** ✅✅✅ 추가 */
         expandAllRows,
         collapseAllRows,
         isAllExpanded,
