@@ -53,6 +53,8 @@ export type Column<T> = {
     filter?: React.ReactNode;
 };
 
+// src/shared/headless/AirTable/AirTable.tsx
+
 export type AirTableProps<T> = {
     data: T[];
     columns: Column<T>[];
@@ -65,14 +67,13 @@ export type AirTableProps<T> = {
     style?: React.CSSProperties;
     children?: React.ReactNode;
     pinnedColumnKeys?: string[];
-
-    /** ✅ flatten props */
     getExpandedRows?: (row: T, ri: number) => T[];
     getRowLevel?: (row: T, ri: number) => number;
-
-    /** ✅✅✅ 추가: 기본으로 펼쳐져 있을 rowKey 목록 */
     defaultExpandedRowKeys?: string[];
     enableAnimation?: boolean;
+
+    /** ✅ 추가: 남는 폭 채우기 on/off */
+    fillContainerWidth?: boolean;
 };
 
 export type DragGhost = {
@@ -757,8 +758,10 @@ const AirTableInner = <T,>({
     pinnedColumnKeys: initialPinnedColumnKeys = [],
     getExpandedRows,
     getRowLevel,
-    defaultExpandedRowKeys = [], // ✅✅✅ 추가
+    defaultExpandedRowKeys = [],
     enableAnimation,
+
+    fillContainerWidth = true, // ✅ 기본은 켜두고(원하면 false로 바꿔도 됨)
 }: AirTableProps<T>) => {
     const wrapperRef = useRef<HTMLDivElement | null>(null);
     const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -766,38 +769,30 @@ const AirTableInner = <T,>({
 
     const containerWidth = useContainerWidth(wrapperRef);
 
-    /** ✅✅✅ 기본 펼침 rowKey를 Set 초기값으로 사용 */
     const [expandedRowKeys, setExpandedRowKeys] = useState<Set<string>>(
         () => new Set(defaultExpandedRowKeys.map(String))
     );
 
-    /** ✅✅✅ (1) expand 가능한 rowKey 리스트를 만든다 */
     const expandableRowKeys = useMemo(() => {
         const keys: string[] = [];
 
         data.forEach((item, ri) => {
             const rowKey = getRowKey({ item, ri, rowKeyField: rowKeyField ? String(rowKeyField) : undefined });
-
-            // ✅ getRowCanExpand가 있으면 그것이 기준, 없으면 getExpandedRows 존재 여부로 판단
             const canExpand = getRowCanExpand ? getRowCanExpand(item, ri) : !!getExpandedRows;
-
             if (canExpand) keys.push(rowKey);
         });
 
         return keys;
     }, [data, rowKeyField, getRowCanExpand, getExpandedRows]);
 
-    /** ✅✅✅ (2) 전체 열기 */
     const expandAllRows = useCallback(() => {
         setExpandedRowKeys(new Set(expandableRowKeys));
     }, [expandableRowKeys]);
 
-    /** ✅✅✅ (3) 전체 닫기 */
     const collapseAllRows = useCallback(() => {
         setExpandedRowKeys(new Set());
     }, []);
 
-    /** ✅✅✅ (4) 전체가 열려있는지 여부 */
     const isAllExpanded = useCallback(() => {
         if (expandableRowKeys.length === 0) return false;
         return expandableRowKeys.every((k) => expandedRowKeys.has(k));
@@ -840,13 +835,15 @@ const AirTableInner = <T,>({
         return map;
     }, [columnRow.columns]);
 
-    const { baseOrder, gridTemplateColumns, baseXByKey, offsetByKey, tableMinWidthPx } = useGridMeta({
+    const { baseOrder, gridTemplateColumns, baseXByKey, offsetByKey, tableMinWidthPx, layoutWidthByKey } = useGridMeta({
         columnOrder,
         visibleKeys,
         widthByKey,
         defaultColWidth,
         pinnedColumnKeys,
         dragPreviewOrder: drag.previewOrder,
+        containerWidthPx: containerWidth, // ✅ 추가
+        fillContainerWidth,
     });
 
     const { getXInGrid, getYInGrid, isInsideScrollAreaX, calcInsertIndex } = useGridPointer({
@@ -854,7 +851,7 @@ const AirTableInner = <T,>({
         scrollRef,
         baseOrder,
         baseXByKey,
-        widthByKey,
+        widthByKey: layoutWidthByKey, // ✅ 변경 (pointer도 “채움 반영” 폭 기준)
         defaultColWidth,
     });
 
@@ -974,7 +971,9 @@ const AirTableInner = <T,>({
 
         baseOrder,
         gridTemplateColumns,
-        widthByKey,
+
+        // ✅ 변경: Context의 widthByKey도 “레이아웃용 폭”으로 (Header/Body/Pointer 모두 일치)
+        widthByKey: layoutWidthByKey,
         baseXByKey,
         offsetByKey,
 
@@ -1004,7 +1003,6 @@ const AirTableInner = <T,>({
         toggleRowExpanded,
         isRowExpanded,
 
-        /** ✅✅✅ 추가 */
         expandAllRows,
         collapseAllRows,
         isAllExpanded,
