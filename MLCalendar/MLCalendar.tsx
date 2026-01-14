@@ -1,7 +1,7 @@
 'use client';
 
 import type React from 'react';
-import { createContext, useContext, useState, useCallback, useMemo } from 'react';
+import { createContext, useContext, useState, useCallback, useMemo, useEffect, useRef } from 'react';
 
 // --- Types ---
 export type CalendarView = 'dayGridMonth' | 'timeGridWeek' | 'timeGridDay' | 'listWeek';
@@ -19,14 +19,12 @@ export type CalendarEvent = {
 };
 
 type MLCalendarContextType = {
-    // 상태
     view: CalendarView;
     currentDate: Date;
     events: CalendarEvent[];
     selectedEvent: CalendarEvent | null;
     isLoading: boolean;
 
-    // 액션
     setView: (view: CalendarView) => void;
     setCurrentDate: (date: Date) => void;
     setEvents: (events: CalendarEvent[]) => void;
@@ -36,7 +34,6 @@ type MLCalendarContextType = {
     selectEvent: (event: CalendarEvent | null) => void;
     setIsLoading: (loading: boolean) => void;
 
-    // 네비게이션
     goToToday: () => void;
     goToPrev: () => void;
     goToNext: () => void;
@@ -47,21 +44,27 @@ const MLCalendarContext = createContext<MLCalendarContextType | null>(null);
 // --- Props ---
 type MLCalendarProps = {
     children: React.ReactNode;
+
     initialView?: CalendarView;
     initialDate?: Date;
     initialEvents?: CalendarEvent[];
+
+    // ✅ 외부 주입용(비동기 로딩/리패치 대응)
+    externalEvents?: CalendarEvent[];
+
     onViewChange?: (view: CalendarView) => void;
     onDateChange?: (date: Date) => void;
     onEventSelect?: (event: CalendarEvent | null) => void;
     onEventsChange?: (events: CalendarEvent[]) => void;
 };
 
-// --- Provider Component ---
 const MLCalendarProvider: React.FC<MLCalendarProps> = ({
     children,
     initialView = 'dayGridMonth',
     initialDate,
     initialEvents = [],
+    externalEvents,
+
     onViewChange,
     onDateChange,
     onEventSelect,
@@ -72,6 +75,22 @@ const MLCalendarProvider: React.FC<MLCalendarProps> = ({
     const [events, setEventsState] = useState<CalendarEvent[]>(initialEvents);
     const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
     const [isLoading, setIsLoading] = useState(false);
+
+    // ✅ 외부 events가 바뀌면 Provider state를 갱신
+    // - onEventsChange는 "내부에서 수정"할 때만 호출하는 게 일반적이라 여기서는 호출 안 함
+    const prevExternalKey = useRef<string>('');
+    useEffect(() => {
+        if (!externalEvents) return;
+
+        // 불필요한 setState 방지(얕은 비교용 키)
+        const nextKey = `${externalEvents.length}:${externalEvents[0]?.id ?? ''}:${
+            externalEvents[externalEvents.length - 1]?.id ?? ''
+        }`;
+        if (prevExternalKey.current === nextKey) return;
+        prevExternalKey.current = nextKey;
+
+        setEventsState(externalEvents);
+    }, [externalEvents]);
 
     const setView = useCallback(
         (newView: CalendarView) => {
@@ -220,9 +239,7 @@ const MLCalendarProvider: React.FC<MLCalendarProps> = ({
 // --- Hook ---
 export const useMLCalendar = () => {
     const context = useContext(MLCalendarContext);
-    if (!context) {
-        throw new Error('useMLCalendar must be used within MLCalendarProvider');
-    }
+    if (!context) throw new Error('useMLCalendar must be used within MLCalendarProvider');
     return context;
 };
 
