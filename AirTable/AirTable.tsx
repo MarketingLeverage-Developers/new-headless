@@ -1,6 +1,6 @@
 // src/shared/headless/AirTable/AirTable.tsx
 
-import React, { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Container } from './components/Container';
 import { Header } from './components/Header';
 import { Body } from './components/Body';
@@ -71,6 +71,7 @@ export type AirTableProps<T> = {
     getRowLevel?: (row: T, ri: number) => number;
     defaultExpandedRowKeys?: string[];
     enableAnimation?: boolean;
+    persistExpandedRowKeys?: boolean;
 
     /** ✅ 추가: 남는 폭 채우기 on/off */
     fillContainerWidth?: boolean;
@@ -207,6 +208,36 @@ const savePersistedTableState = (storageKey: string, state: PersistedTableState)
     if (typeof window === 'undefined') return;
     try {
         window.localStorage.setItem(storageKey, JSON.stringify(state));
+    } catch {
+        // ignore
+    }
+};
+
+const getExpandedRowKeysStorageKey = (storageKey?: string) =>
+    storageKey ? `${storageKey}__expandedRowKeys` : undefined;
+
+const loadPersistedExpandedRowKeys = (storageKey?: string): string[] | null => {
+    const key = getExpandedRowKeysStorageKey(storageKey);
+    if (!key) return null;
+    if (typeof window === 'undefined') return null;
+
+    try {
+        const raw = window.localStorage.getItem(key);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw) as unknown;
+        if (!Array.isArray(parsed)) return null;
+        return parsed.map((k) => String(k));
+    } catch {
+        return null;
+    }
+};
+
+const savePersistedExpandedRowKeys = (storageKey: string, keys: string[]) => {
+    const key = getExpandedRowKeysStorageKey(storageKey);
+    if (!key) return;
+    if (typeof window === 'undefined') return;
+    try {
+        window.localStorage.setItem(key, JSON.stringify(keys));
     } catch {
         // ignore
     }
@@ -760,6 +791,7 @@ const AirTableInner = <T,>({
     getRowLevel,
     defaultExpandedRowKeys = [],
     enableAnimation,
+    persistExpandedRowKeys = false,
 
     fillContainerWidth = true, // ✅ 기본은 켜두고(원하면 false로 바꿔도 됨)
 }: AirTableProps<T>) => {
@@ -769,9 +801,15 @@ const AirTableInner = <T,>({
 
     const containerWidth = useContainerWidth(wrapperRef);
 
-    const [expandedRowKeys, setExpandedRowKeys] = useState<Set<string>>(
-        () => new Set(defaultExpandedRowKeys.map(String))
-    );
+    const [expandedRowKeys, setExpandedRowKeys] = useState<Set<string>>(() => {
+        if (persistExpandedRowKeys && storageKey) {
+            const persisted = loadPersistedExpandedRowKeys(storageKey);
+            if (persisted !== null) return new Set(persisted);
+        }
+        return new Set(defaultExpandedRowKeys.map(String));
+    });
+    const lastExpandedStorageKeyRef = useRef<string | undefined>(storageKey);
+    const skipNextExpandedPersistRef = useRef(false);
 
     const expandableRowKeys = useMemo(() => {
         const keys: string[] = [];
@@ -784,6 +822,34 @@ const AirTableInner = <T,>({
 
         return keys;
     }, [data, rowKeyField, getRowCanExpand, getExpandedRows]);
+
+    useEffect(() => {
+        if (!persistExpandedRowKeys) {
+            lastExpandedStorageKeyRef.current = undefined;
+            return;
+        }
+
+        if (lastExpandedStorageKeyRef.current === storageKey) return;
+
+        lastExpandedStorageKeyRef.current = storageKey;
+        skipNextExpandedPersistRef.current = true;
+
+        const persisted = storageKey ? loadPersistedExpandedRowKeys(storageKey) : null;
+        if (persisted !== null) {
+            setExpandedRowKeys(new Set(persisted));
+        } else {
+            setExpandedRowKeys(new Set(defaultExpandedRowKeys.map(String)));
+        }
+    }, [persistExpandedRowKeys, storageKey, defaultExpandedRowKeys]);
+
+    useEffect(() => {
+        if (!persistExpandedRowKeys || !storageKey) return;
+        if (skipNextExpandedPersistRef.current) {
+            skipNextExpandedPersistRef.current = false;
+            return;
+        }
+        savePersistedExpandedRowKeys(storageKey, Array.from(expandedRowKeys));
+    }, [expandedRowKeys, persistExpandedRowKeys, storageKey]);
 
     const expandAllRows = useCallback(() => {
         setExpandedRowKeys(new Set(expandableRowKeys));
