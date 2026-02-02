@@ -67,6 +67,8 @@ export type AirTableProps<T> = {
     style?: React.CSSProperties;
     children?: React.ReactNode;
     pinnedColumnKeys?: string[];
+    pinnedHeaderBgColor?: string | ((colKey: string) => string | undefined);
+    pinnedHeaderTextColor?: string | ((colKey: string) => string | undefined);
     getExpandedRows?: (row: T, ri: number) => T[];
     getRowLevel?: (row: T, ri: number) => number;
     defaultExpandedRowKeys?: string[];
@@ -850,6 +852,8 @@ const AirTableInner = <T,>({
     style,
     children,
     pinnedColumnKeys: initialPinnedColumnKeys = [],
+    pinnedHeaderBgColor,
+    pinnedHeaderTextColor,
     getExpandedRows,
     getRowLevel,
     defaultExpandedRowKeys = [],
@@ -1157,6 +1161,8 @@ const AirTableInner = <T,>({
             children,
             getRowCanExpand,
             pinnedColumnKeys,
+            pinnedHeaderBgColor,
+            pinnedHeaderTextColor,
             getExpandedRows,
             getRowLevel,
             defaultExpandedRowKeys,

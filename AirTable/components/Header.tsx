@@ -209,6 +209,14 @@ export const Header = <T,>({ className, headerCellClassName, resizeHandleClassNa
 
     const enableAnimation = props.enableAnimation ?? false;
 
+    const resolvePinnedHeaderColor = useCallback(
+        (
+            value: string | ((colKey: string) => string | undefined) | undefined,
+            colKey: string
+        ): string | undefined => (typeof value === 'function' ? value(colKey) : value),
+        []
+    );
+
     const isDragging = !!state.drag.draggingKey;
 
     const [filterPopup, setFilterPopup] = useState<{
@@ -404,6 +412,8 @@ export const Header = <T,>({ className, headerCellClassName, resizeHandleClassNa
                         if (!col) return null;
 
                         const isPinned = pinnedColumnKeys.includes(colKey);
+                        const pinnedHeaderBg = resolvePinnedHeaderColor(props.pinnedHeaderBgColor, colKey);
+                        const pinnedHeaderTextColor = resolvePinnedHeaderColor(props.pinnedHeaderTextColor, colKey);
 
                         return (
                             <HeaderCellWrapper
@@ -420,7 +430,16 @@ export const Header = <T,>({ className, headerCellClassName, resizeHandleClassNa
                                     cursor: isDragging ? 'grabbing' : 'grab',
                                     userSelect: 'none',
                                     ...(isDragging ? getShiftStyle(colKey) : {}),
-                                    ...getPinnedStyle(colKey, getThemeColor('Primary1'), { isHeader: true }),
+                                    ...(isPinned
+                                        ? {
+                                              ...getPinnedStyle(
+                                                  colKey,
+                                                  pinnedHeaderBg ?? getThemeColor('Primary1'),
+                                                  { isHeader: true }
+                                              ),
+                                              ...(pinnedHeaderTextColor ? { color: pinnedHeaderTextColor } : {}),
+                                          }
+                                        : {}),
                                 }}
                                 onMouseDown={handleHeaderMouseDown(colKey)}
                                 onContextMenu={handleContextMenu(colKey)}
