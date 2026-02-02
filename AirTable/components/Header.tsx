@@ -333,7 +333,6 @@ export const Header = <T,>({ className, headerCellClassName, resizeHandleClassNa
 
     const handleHeaderMouseDown = (colKey: string) => (e: React.MouseEvent<HTMLDivElement>) => {
         if (resizeRef.current) return;
-        if (pinnedColumnKeys.includes(colKey)) return;
         if (e.button !== 0) return;
 
         e.preventDefault();
@@ -418,7 +417,7 @@ export const Header = <T,>({ className, headerCellClassName, resizeHandleClassNa
                                 className={[headerCellClassName, 'air-table-header-cell'].filter(Boolean).join(' ')}
                                 style={{
                                     position: 'relative',
-                                    cursor: isPinned ? 'default' : 'grab',
+                                    cursor: isDragging ? 'grabbing' : 'grab',
                                     userSelect: 'none',
                                     ...(isDragging ? getShiftStyle(colKey) : {}),
                                     ...getPinnedStyle(colKey, getThemeColor('Primary1'), { isHeader: true }),

@@ -921,6 +921,73 @@ const AirTableInner = <T,>({
         defaultColWidth,
     });
 
+    const calcInsertIndexWithin = useCallback(
+        (x: number, draggingKey: string, scopeKeys: string[]) => {
+            const filtered = scopeKeys.filter((k) => k !== draggingKey);
+
+            for (let i = 0; i < filtered.length; i += 1) {
+                const key = filtered[i];
+                const left = baseXByKey[key] ?? 0;
+                const w = layoutWidthByKey[key] ?? defaultColWidth;
+                const mid = left + w / 2;
+                if (x < mid) return i;
+            }
+
+            return filtered.length;
+        },
+        [baseXByKey, layoutWidthByKey, defaultColWidth]
+    );
+
+    const getPreviewOrderForDrag = useCallback(
+        (x: number, dragKey: string) => {
+            const isPinned = pinnedColumnKeys.includes(dragKey);
+
+            if (!isPinned) {
+                const insertIndex = calcInsertIndex(x, dragKey);
+                const filtered = baseOrder.filter((k) => k !== dragKey);
+                const next = [...filtered];
+                next.splice(insertIndex, 0, dragKey);
+                return next;
+            }
+
+            const pinned = pinnedColumnKeys.filter((k) => baseOrder.includes(k));
+            if (pinned.length === 0) return null;
+
+            const normal = baseOrder.filter((k) => !pinned.includes(k));
+            const insertIndex = calcInsertIndexWithin(x, dragKey, pinned);
+            const filteredPinned = pinned.filter((k) => k !== dragKey);
+            const nextPinned = [...filteredPinned];
+            nextPinned.splice(insertIndex, 0, dragKey);
+
+            return [...nextPinned, ...normal];
+        },
+        [pinnedColumnKeys, baseOrder, calcInsertIndex, calcInsertIndexWithin]
+    );
+
+    const commitColumnOrderForDrag = useCallback(
+        (order: string[], dragKey: string) => {
+            commitColumnOrder(order);
+
+            if (!pinnedColumnKeys.includes(dragKey)) return;
+
+            const pinnedSet = new Set(pinnedColumnKeys);
+            const orderSet = new Set(order);
+            const nextPinnedVisible = order.filter((k) => pinnedSet.has(k));
+            if (nextPinnedVisible.length === 0) return;
+
+            let i = 0;
+            const nextPinned = pinnedColumnKeys.map((k) => {
+                if (!orderSet.has(k)) return k;
+                const next = nextPinnedVisible[i] ?? k;
+                i += 1;
+                return next;
+            });
+
+            setPinnedColumnKeys(nextPinned);
+        },
+        [commitColumnOrder, pinnedColumnKeys, setPinnedColumnKeys]
+    );
+
     const [ghost, setGhost] = useState<DragGhost | null>(null);
     const [headerScrollLeft, setHeaderScrollLeft] = useState(0);
 
@@ -992,6 +1059,8 @@ const AirTableInner = <T,>({
         setPreviewOrder,
         endColumnDrag,
         commitColumnOrder,
+        getPreviewOrder: getPreviewOrderForDrag,
+        onCommitOrder: commitColumnOrderForDrag,
         disableShiftAnimationRef,
     });
 

@@ -14,6 +14,8 @@ export const useColumnDrag = ({
     setPreviewOrder,
     endColumnDrag,
     commitColumnOrder,
+    getPreviewOrder,
+    onCommitOrder,
     disableShiftAnimationRef,
 }: {
     dragKey: string | null;
@@ -29,6 +31,8 @@ export const useColumnDrag = ({
     setPreviewOrder: (order: string[] | null) => void;
     endColumnDrag: () => void;
     commitColumnOrder: (order: string[]) => void;
+    getPreviewOrder?: (x: number, dragKey: string) => string[] | null;
+    onCommitOrder?: (order: string[], dragKey: string) => void;
     disableShiftAnimationRef: React.MutableRefObject<boolean>;
 }) => {
     useEffect(() => {
@@ -47,7 +51,8 @@ export const useColumnDrag = ({
             }
 
             disableShiftAnimationRef.current = true;
-            commitColumnOrder(final);
+            if (onCommitOrder && dragKey) onCommitOrder(final, dragKey);
+            else commitColumnOrder(final);
 
             requestAnimationFrame(() => {
                 disableShiftAnimationRef.current = false;
@@ -73,13 +78,17 @@ export const useColumnDrag = ({
 
             if (!isInsideScrollAreaX(ev.clientX)) return;
 
-            const insertIndex = calcInsertIndex(x, dragKey);
+            const next = getPreviewOrder
+                ? getPreviewOrder(x, dragKey)
+                : (() => {
+                      const insertIndex = calcInsertIndex(x, dragKey);
+                      const filtered = baseOrder.filter((k) => k !== dragKey);
+                      const order = [...filtered];
+                      order.splice(insertIndex, 0, dragKey);
+                      return order;
+                  })();
 
-            const filtered = baseOrder.filter((k) => k !== dragKey);
-            const next = [...filtered];
-            next.splice(insertIndex, 0, dragKey);
-
-            setPreviewOrder(next);
+            setPreviewOrder(next && next.length > 0 ? next : null);
         };
 
         const handleUp = () => finalize();
@@ -135,6 +144,8 @@ export const useColumnDrag = ({
         setPreviewOrder,
         endColumnDrag,
         commitColumnOrder,
+        getPreviewOrder,
+        onCommitOrder,
         disableShiftAnimationRef,
     ]);
 };
