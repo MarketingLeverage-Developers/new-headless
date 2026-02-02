@@ -385,7 +385,15 @@ const useTable = <T,>({
         return map;
     }, [leafColumns, defaultColWidth, innerWidth]);
 
-    const [persisted] = useState<PersistedTableState | null>(() => loadPersistedTableState(storageKey));
+    const [persisted, setPersisted] = useState<PersistedTableState | null>(() => loadPersistedTableState(storageKey));
+
+    useEffect(() => {
+        if (!storageKey) {
+            setPersisted(null);
+            return;
+        }
+        setPersisted(loadPersistedTableState(storageKey));
+    }, [storageKey]);
 
     const [columnWidths, setColumnWidths] = useState<Record<string, number>>(() => persisted?.columnWidths ?? {});
     const [columnOrder, setColumnOrder] = useState<string[]>(() => {
@@ -410,6 +418,60 @@ const useTable = <T,>({
         return null;
     }, [knownColumnKeys]);
 
+    // storageKey 변경 시 persisted hydrate 준비
+    const pendingHydrationRef = useRef(false);
+    const hydratedRef = useRef(false);
+    const stableLeafKeysTimerRef = useRef<number | null>(null);
+
+    useEffect(() => {
+        hydratedRef.current = false;
+        pendingHydrationRef.current = true;
+
+        if (stableLeafKeysTimerRef.current) {
+            window.clearTimeout(stableLeafKeysTimerRef.current);
+            stableLeafKeysTimerRef.current = null;
+        }
+    }, [storageKey]);
+
+    useEffect(() => {
+        if (!storageKey) return;
+        if (!pendingHydrationRef.current) return;
+        if (hydratedRef.current) return;
+
+        if (stableLeafKeysTimerRef.current) {
+            window.clearTimeout(stableLeafKeysTimerRef.current);
+        }
+
+        // leafKeys가 안정화될 때까지 대기 후 hydrate 1회
+        stableLeafKeysTimerRef.current = window.setTimeout(() => {
+            stableLeafKeysTimerRef.current = null;
+
+            if (!storageKey) return;
+            if (hydratedRef.current) return;
+            if (!pendingHydrationRef.current) return;
+
+            const nextWidths = persisted?.columnWidths ?? {};
+            const nextOrder =
+                persisted?.columnOrder && persisted.columnOrder.length > 0 ? persisted.columnOrder : leafKeys;
+            const nextVisible =
+                persisted?.visibleColumnKeys && persisted.visibleColumnKeys.length > 0
+                    ? persisted.visibleColumnKeys
+                    : leafKeys;
+            const nextKnown = persisted?.knownColumnKeys ?? [];
+            const nextPinned = persisted?.pinnedColumnKeys ?? initialPinnedColumnKeys ?? [];
+
+            setColumnWidths(nextWidths);
+            setColumnOrder(uniq(nextOrder));
+            setVisibleColumnKeysDesired(uniq(nextVisible));
+            setKnownColumnKeys(uniq(nextKnown));
+            setPinnedColumnKeysState(uniq(nextPinned));
+            knownSetRef.current = new Set(uniq(nextKnown));
+
+            hydratedRef.current = true;
+            pendingHydrationRef.current = false;
+        }, 60);
+    }, [storageKey, leafKeys, persisted, initialPinnedColumnKeys]);
+
     const stateRef = useRef<PersistedTableState>({
         columnWidths,
         columnOrder,
@@ -431,6 +493,7 @@ const useTable = <T,>({
 
     const persistNow = useCallback(() => {
         if (!storageKey) return;
+        if (pendingHydrationRef.current && !hydratedRef.current) return;
         const s = stateRef.current;
         savePersistedTableState(storageKey, {
             columnWidths: s.columnWidths,
