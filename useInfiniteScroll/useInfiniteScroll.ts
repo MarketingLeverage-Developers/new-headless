@@ -38,6 +38,11 @@ export const useInfiniteScroll = ({
             return { hasMore, showEndMessage: !hasMore };
         }
         if (typeof total === 'number' && Number.isFinite(total) && total > 0) {
+            // total이 "전체 건수"인지 "현재 페이지 건수"인지 모호한 케이스 대응
+            if (total <= size) {
+                const hasMore = total >= size;
+                return { hasMore, showEndMessage: !hasMore };
+            }
             const hasMore = page * size < total;
             return { hasMore, showEndMessage: !hasMore };
         }
