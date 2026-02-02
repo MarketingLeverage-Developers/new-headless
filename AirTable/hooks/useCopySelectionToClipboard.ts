@@ -10,6 +10,23 @@ export type CopySelectionParams = {
 export const useCopySelectionToClipboard = ({ getRange, draggingKey, rows, baseOrder }: CopySelectionParams) => {
     useEffect(() => {
         const handleCopy = (e: ClipboardEvent) => {
+            const activeEl = document.activeElement as HTMLElement | null;
+            const isEditableActive =
+                activeEl instanceof HTMLInputElement ||
+                activeEl instanceof HTMLTextAreaElement ||
+                activeEl?.isContentEditable;
+            if (isEditableActive) return;
+
+            const selection = window.getSelection();
+            if (selection && !selection.isCollapsed) {
+                const anchorEl =
+                    selection.anchorNode instanceof Element ? selection.anchorNode : selection.anchorNode?.parentElement;
+                const focusEl =
+                    selection.focusNode instanceof Element ? selection.focusNode : selection.focusNode?.parentElement;
+                const inAirCell = anchorEl?.closest?.('[id^="__cell_"]') || focusEl?.closest?.('[id^="__cell_"]');
+                if (!inAirCell) return;
+            }
+
             const r = getRange();
             if (!r) return;
             if (draggingKey) return;
