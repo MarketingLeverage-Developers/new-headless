@@ -1,4 +1,5 @@
 import React, { useLayoutEffect, useRef, useState } from 'react';
+import { getThemeColor } from '@/shared/utils/css/getThemeColor';
 import type { CellRenderMeta } from '../AirTable';
 import { useAirTableContext } from '../AirTable';
 import styles from './Body.module.scss';
@@ -313,7 +314,7 @@ export const Body = <T,>({
                                                         style={{
                                                             backgroundColor: cellBg,
                                                             ...getShiftStyle(colKey),
-                                                            ...getPinnedStyle(colKey, cellBg ?? '#fff'),
+                                                            ...getPinnedStyle(colKey, cellBg ?? getThemeColor('White1')),
                                                             ...(isIndentTarget ? { paddingLeft: indentPadding } : {}),
                                                         }}
                                                     >
@@ -436,7 +437,7 @@ export const Body = <T,>({
                                                     style={{
                                                         backgroundColor: cellBg,
                                                         ...getShiftStyle(colKey),
-                                                        ...getPinnedStyle(colKey, cellBg ?? '#fff'),
+                                                        ...getPinnedStyle(colKey, cellBg ?? getThemeColor('White1')),
                                                         ...(isIndentTarget ? { paddingLeft: indentPadding } : {}),
                                                     }}
                                                 >
