@@ -1,6 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { MIN_COL_WIDTH, useAirTableContext } from '../AirTable';
+import type { SortConfig, SortDirection, SortValue } from '../AirTable';
+import { FaArrowDown, FaArrowUp } from 'react-icons/fa';
+import { VscFilter, VscFilterFilled } from 'react-icons/vsc';
 import { getThemeColor } from '@/shared/utils/css/getThemeColor';
 import { motion } from 'framer-motion';
 
@@ -13,6 +16,186 @@ type HeaderProps = {
 const stopOnly = (e: React.SyntheticEvent) => {
     e.preventDefault();
     e.stopPropagation();
+};
+
+const isHeaderActionTarget = (target: EventTarget | null) => {
+    const el = target as HTMLElement | null;
+    if (!el) return false;
+    return !!el.closest('[data-col-menu-btn],[data-col-sort-btn],[data-col-resize-handle]');
+};
+
+const SortIcon = ({
+    direction,
+    activeColor,
+}: {
+    direction: SortDirection | null;
+    activeColor: string;
+}) => {
+    if (direction === 'asc') {
+        return <FaArrowUp size={12} color={activeColor} aria-hidden="true" />;
+    }
+
+    if (direction === 'desc') {
+        return <FaArrowDown size={12} color={activeColor} aria-hidden="true" />;
+    }
+
+    return null;
+};
+
+const DefaultColumnFilter = <T,>({
+    colKey,
+    data,
+    sortConfigByKey,
+    filterState,
+    setFilterState,
+}: {
+    colKey: string;
+    data: T[];
+    sortConfigByKey: Map<string, SortConfig<T>>;
+    filterState: Record<string, { excluded: string[] }>;
+    setFilterState: (next: Record<string, { excluded: string[] }>) => void;
+}) => {
+    const [keyword, setKeyword] = useState('');
+    const config = sortConfigByKey.get(colKey);
+
+    useEffect(() => {
+        setKeyword('');
+    }, [colKey]);
+
+    const options = useMemo(() => {
+        if (!config?.sortValue) return [];
+        const map = new Map<string, { key: string; label: string; count: number }>();
+
+        data.forEach((row) => {
+            const raw = config.sortValue ? config.sortValue(row) : undefined;
+            const key = getFilterKey(raw);
+            const label = formatFilterLabel(raw);
+            const prev = map.get(key);
+            if (prev) {
+                prev.count += 1;
+            } else {
+                map.set(key, { key, label, count: 1 });
+            }
+        });
+
+        const list = Array.from(map.values());
+        list.sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true, sensitivity: 'base' }));
+        return list;
+    }, [config, data]);
+
+    const filteredOptions = useMemo(() => {
+        const q = keyword.trim().toLowerCase();
+        if (!q) return options;
+        return options.filter((opt) => opt.label.toLowerCase().includes(q));
+    }, [options, keyword]);
+
+    const excludedSet = useMemo(() => new Set(filterState[colKey]?.excluded ?? []), [filterState, colKey]);
+
+    const toggleExclude = (key: string) => {
+        const nextExcluded = new Set(excludedSet);
+        if (nextExcluded.has(key)) nextExcluded.delete(key);
+        else nextExcluded.add(key);
+
+        const nextState = { ...filterState };
+        if (nextExcluded.size === 0) {
+            delete nextState[colKey];
+        } else {
+            nextState[colKey] = { excluded: Array.from(nextExcluded) };
+        }
+        setFilterState(nextState);
+    };
+
+    const clearFilter = () => {
+        if (!filterState[colKey]) return;
+        const nextState = { ...filterState };
+        delete nextState[colKey];
+        setFilterState(nextState);
+    };
+
+    return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <input
+                value={keyword}
+                onChange={(e) => setKeyword(e.target.value)}
+                placeholder="값 검색"
+                style={{
+                    width: '100%',
+                    height: 34,
+                    padding: '0 10px',
+                    borderRadius: 8,
+                    border: '1px solid rgba(0,0,0,0.12)',
+                    outline: 'none',
+                    fontSize: 13,
+                }}
+            />
+            <div
+                style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 4,
+                    maxHeight: 240,
+                    overflowY: 'auto',
+                }}
+            >
+                {filteredOptions.length === 0 ? (
+                    <div style={{ padding: '8px 4px', color: getThemeColor('Gray2'), fontSize: 12 }}>
+                        결과 없음
+                    </div>
+                ) : (
+                    filteredOptions.map((opt) => {
+                        const excluded = excludedSet.has(opt.key);
+                        return (
+                            <button
+                                key={opt.key || '__empty__'}
+                                type="button"
+                                onClick={() => toggleExclude(opt.key)}
+                                style={{
+                                    width: '100%',
+                                    border: 'none',
+                                    background: excluded ? 'rgba(0,0,0,0.04)' : 'transparent',
+                                    borderRadius: 6,
+                                    padding: '6px 8px',
+                                    textAlign: 'left',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    gap: 12,
+                                    fontSize: 12,
+                                    color: excluded ? getThemeColor('Gray2') : getThemeColor('Black1'),
+                                    textDecoration: excluded ? 'line-through' : 'none',
+                                }}
+                                title={opt.label}
+                            >
+                                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    {opt.label}
+                                </span>
+                                <span style={{ color: getThemeColor('Gray3'), fontSize: 11 }}>{opt.count}</span>
+                            </button>
+                        );
+                    })
+                )}
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: 11, color: getThemeColor('Gray2') }}>
+                    제외 {excludedSet.size}개
+                </span>
+                <button
+                    type="button"
+                    onClick={clearFilter}
+                    style={{
+                        border: 'none',
+                        background: 'transparent',
+                        color: getThemeColor('Primary1'),
+                        fontSize: 12,
+                        cursor: 'pointer',
+                    }}
+                >
+                    전체 보기
+                </button>
+            </div>
+        </div>
+    );
 };
 
 const ColumnFilterPopup = ({
@@ -78,6 +261,18 @@ const ColumnFilterPopup = ({
         </div>,
         document.body
     );
+};
+
+const formatFilterLabel = (value: SortValue): string => {
+    if (value === null || value === undefined || value === '') return '없음';
+    if (value instanceof Date) return value.toLocaleString();
+    return String(value);
+};
+
+const getFilterKey = (value: SortValue): string => {
+    if (value === null || value === undefined) return '';
+    if (value instanceof Date) return value.toISOString();
+    return String(value);
 };
 
 const itemStyle: React.CSSProperties = {
@@ -199,12 +394,19 @@ export const Header = <T,>({ className, headerCellClassName, resizeHandleClassNa
         getShiftStyle,
         getPinnedStyle,
         setGhost,
+        ghost,
         scrollRef,
         pinnedColumnKeys,
         setPinnedColumnKeys,
+        sortState,
+        setSortState,
+        sortConfigByKey,
+        filterState,
+        setFilterState,
     } = useAirTableContext<T>();
 
     const { data, defaultColWidth = 160 } = props;
+    const filterOptionsData = props.filterOptionsData ?? data;
     const { columnRow, startColumnDrag, visibleColumnKeys, setVisibleColumnKeys } = state;
 
     const enableAnimation = props.enableAnimation ?? false;
@@ -218,6 +420,11 @@ export const Header = <T,>({ className, headerCellClassName, resizeHandleClassNa
     );
 
     const isDragging = !!state.drag.draggingKey;
+    const MOVE_THRESHOLD_PX = 6;
+    const isDraggingMoved =
+        isDragging &&
+        !!ghost &&
+        (Math.abs(ghost.offsetX ?? 0) >= MOVE_THRESHOLD_PX || Math.abs(ghost.offsetY ?? 0) >= MOVE_THRESHOLD_PX);
 
     const [filterPopup, setFilterPopup] = useState<{
         open: boolean;
@@ -315,6 +522,20 @@ export const Header = <T,>({ className, headerCellClassName, resizeHandleClassNa
         }
     }, [contextMenu.colKey, visibleColumnKeys, setVisibleColumnKeys, pinnedColumnKeys, setPinnedColumnKeys]);
 
+    const handleSortToggle = useCallback(
+        (colKey: string) => {
+            if (!sortConfigByKey.has(colKey)) return;
+
+            const current = sortState?.key === colKey ? sortState.direction : null;
+            const nextDirection = current === null ? 'asc' : current === 'asc' ? 'desc' : null;
+
+            setSortState(nextDirection ? { key: colKey, direction: nextDirection } : null);
+        },
+        [sortState, setSortState, sortConfigByKey]
+    );
+
+    const sortActiveColor = getThemeColor('Primary1');
+
     const handleResizeMouseDown = useCallback(
         (colKey: string) => (e: React.MouseEvent<HTMLDivElement>) => {
             e.preventDefault();
@@ -366,11 +587,33 @@ export const Header = <T,>({ className, headerCellClassName, resizeHandleClassNa
         });
     };
 
+    const handleHeaderClick = useCallback(
+        (colKey: string) => (e: React.MouseEvent<HTMLDivElement>) => {
+            if (resizeRef.current) return;
+            if (state.drag.draggingKey) return;
+            if (isHeaderActionTarget(e.target)) return;
+            if (!sortConfigByKey.has(colKey)) return;
+            handleSortToggle(colKey);
+        },
+        [handleSortToggle, resizeRef, sortConfigByKey, state.drag.draggingKey]
+    );
+
     const activeFilterContent = useMemo(() => {
         if (!filterPopup.open || !filterPopup.colKey) return null;
         const col = columnRow.columns.find((c) => c.key === filterPopup.colKey);
-        return col?.filter ?? null;
-    }, [filterPopup.open, filterPopup.colKey, columnRow.columns]);
+        if (!col) return null;
+        if (col.filter) return col.filter;
+        if (!sortConfigByKey.get(col.key)?.sortValue) return null;
+        return (
+            <DefaultColumnFilter<T>
+                colKey={col.key}
+                data={filterOptionsData}
+                sortConfigByKey={sortConfigByKey}
+                filterState={filterState}
+                setFilterState={setFilterState}
+            />
+        );
+    }, [filterPopup.open, filterPopup.colKey, columnRow.columns, sortConfigByKey, filterOptionsData, filterState, setFilterState]);
 
     const isContextPinned = useMemo(() => {
         if (!contextMenu.colKey) return false;
@@ -414,6 +657,13 @@ export const Header = <T,>({ className, headerCellClassName, resizeHandleClassNa
                         const isPinned = pinnedColumnKeys.includes(colKey);
                         const pinnedHeaderBg = resolvePinnedHeaderColor(props.pinnedHeaderBgColor, colKey);
                         const pinnedHeaderTextColor = resolvePinnedHeaderColor(props.pinnedHeaderTextColor, colKey);
+                        const sortConfig = sortConfigByKey.get(colKey);
+                        const isSortable = !!sortConfig;
+                        const sortDirection = sortState?.key === colKey ? sortState.direction : null;
+                        const hasFilterButton = !!col.filter || !!sortConfig?.sortValue;
+                        const isFilterActive = (filterState[colKey]?.excluded?.length ?? 0) > 0;
+                        const actionPaddingRight = 12 + (hasFilterButton ? 28 : 0) + (isSortable ? 24 : 0);
+                        const sortButtonRight = hasFilterButton ? 42 : 14;
 
                         return (
                             <HeaderCellWrapper
@@ -427,7 +677,7 @@ export const Header = <T,>({ className, headerCellClassName, resizeHandleClassNa
                                 className={[headerCellClassName, 'air-table-header-cell'].filter(Boolean).join(' ')}
                                 style={{
                                     position: 'relative',
-                                    cursor: isDragging ? 'grabbing' : 'grab',
+                                    cursor: isDraggingMoved ? 'grabbing' : 'pointer',
                                     userSelect: 'none',
                                     ...(isDragging ? getShiftStyle(colKey) : {}),
                                     ...(isPinned
@@ -442,9 +692,17 @@ export const Header = <T,>({ className, headerCellClassName, resizeHandleClassNa
                                         : {}),
                                 }}
                                 onMouseDown={handleHeaderMouseDown(colKey)}
+                                onClick={handleHeaderClick(colKey)}
                                 onContextMenu={handleContextMenu(colKey)}
                             >
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingRight: 44 }}>
+                                <div
+                                    style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: 8,
+                                        paddingRight: actionPaddingRight,
+                                    }}
+                                >
                                     <div
                                         ref={(el) => {
                                             headerLabelRefMap.current[colKey] = el;
@@ -455,7 +713,49 @@ export const Header = <T,>({ className, headerCellClassName, resizeHandleClassNa
                                     </div>
                                 </div>
 
-                                {col.filter && (
+                                {isSortable && (
+                                    <button
+                                        type="button"
+                                        data-col-sort-btn="true"
+                                        onMouseDownCapture={stopOnly}
+                                        onClick={(e) => {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            handleSortToggle(colKey);
+                                        }}
+                                        style={{
+                                            position: 'absolute',
+                                            top: '50%',
+                                            transform: 'translateY(-50%)',
+                                            right: sortButtonRight,
+                                            width: 16,
+                                            height: 16,
+                                            borderRadius: 0,
+                                            border: 'none',
+                                            background: 'transparent',
+                                            color: getThemeColor('Black1'),
+                                            cursor: 'pointer',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            zIndex: 40,
+                                        }}
+                                        title={
+                                            sortDirection === 'asc'
+                                                ? '오름차순'
+                                                : sortDirection === 'desc'
+                                                ? '내림차순'
+                                                : '정렬'
+                                        }
+                                    >
+                                        <SortIcon
+                                            direction={sortDirection}
+                                            activeColor={sortActiveColor}
+                                        />
+                                    </button>
+                                )}
+
+                                {hasFilterButton && (
                                     <button
                                         type="button"
                                         data-col-menu-btn="true"
@@ -466,11 +766,11 @@ export const Header = <T,>({ className, headerCellClassName, resizeHandleClassNa
                                             top: '50%',
                                             transform: 'translateY(-50%)',
                                             right: 14,
-                                            width: 22,
-                                            height: 22,
-                                            borderRadius: 6,
+                                            width: 18,
+                                            height: 18,
+                                            borderRadius: 0,
                                             border: 'none',
-                                            background: getThemeColor('White1'),
+                                            background: 'transparent',
                                             color: getThemeColor('Black1'),
                                             cursor: 'pointer',
                                             display: 'flex',
@@ -480,18 +780,11 @@ export const Header = <T,>({ className, headerCellClassName, resizeHandleClassNa
                                         }}
                                         title="Filter"
                                     >
-                                        <svg
-                                            width="14"
-                                            height="14"
-                                            viewBox="0 0 24 24"
-                                            fill="none"
-                                            stroke="currentColor"
-                                            strokeWidth="2"
-                                            strokeLinecap="round"
-                                            strokeLinejoin="round"
-                                        >
-                                            <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
-                                        </svg>
+                                        {isFilterActive ? (
+                                            <VscFilterFilled size={14} color={getThemeColor('Primary1')} />
+                                        ) : (
+                                            <VscFilter size={14} color={getThemeColor('Gray2')} />
+                                        )}
                                     </button>
                                 )}
 
@@ -511,6 +804,7 @@ export const Header = <T,>({ className, headerCellClassName, resizeHandleClassNa
                                     }}
                                     onMouseDown={handleResizeMouseDown(colKey)}
                                     onDoubleClick={handleResizeDoubleClick(colKey)}
+                                    data-col-resize-handle="true"
                                 >
                                     <div
                                         style={{

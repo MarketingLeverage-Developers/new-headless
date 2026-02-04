@@ -34,6 +34,13 @@ export type CellRenderMeta<T> = {
     isRowExpanded: (rowKey: string) => boolean;
 };
 
+export type SortDirection = 'asc' | 'desc';
+export type SortState = { key: string; direction: SortDirection } | null;
+export type SortValue = string | number | boolean | Date | null | undefined;
+export type SortValueGetter<T> = (row: T) => SortValue;
+export type Sorter<T> = (a: T, b: T) => number;
+export type FilterState = Record<string, { excluded: string[] }>;
+
 export interface ColumnType<T> {
     key: string;
     label?: string;
@@ -41,6 +48,8 @@ export interface ColumnType<T> {
     header: (key: string, data: T[]) => React.ReactElement;
     width?: number | string;
     filter?: React.ReactNode;
+    sortValue?: SortValueGetter<T>;
+    sorter?: Sorter<T>;
 }
 
 export type Column<T> = {
@@ -51,6 +60,8 @@ export type Column<T> = {
     width?: number | string;
     children?: ColumnType<T>[];
     filter?: React.ReactNode;
+    sortValue?: SortValueGetter<T>;
+    sorter?: Sorter<T>;
 };
 
 // src/shared/headless/AirTable/AirTable.tsx
@@ -77,6 +88,19 @@ export type AirTableProps<T> = {
 
     /** ✅ 추가: 남는 폭 채우기 on/off */
     fillContainerWidth?: boolean;
+
+    /** ✅ 정렬 */
+    sortState?: SortState;
+    defaultSortState?: SortState;
+    onSortChange?: (next: SortState) => void;
+    sortMode?: 'internal' | 'external';
+
+    /** ✅ 필터 */
+    filterState?: FilterState;
+    defaultFilterState?: FilterState;
+    onFilterChange?: (next: FilterState) => void;
+    filterMode?: 'internal' | 'external';
+    filterOptionsData?: T[];
 };
 
 export type DragGhost = {
@@ -158,8 +182,109 @@ export type UseTableResult<T> = {
     setPinnedColumnKeys: (keys: string[]) => void;
 };
 
+export type SortConfig<T> = {
+    sortValue?: SortValueGetter<T>;
+    sorter?: Sorter<T>;
+};
+
 const uniq = (arr: string[]) => Array.from(new Set(arr.map(String)));
 const normalizeStringArray = (v: unknown): string[] => (Array.isArray(v) ? v.map((x) => String(x)) : []);
+
+const normalizeSortValue = (value: SortValue): string | number => {
+    if (value instanceof Date) return value.getTime();
+    if (typeof value === 'number') return value;
+    if (typeof value === 'boolean') return value ? 1 : 0;
+    if (value === null || value === undefined) return '';
+    return String(value);
+};
+
+const normalizeFilterKey = (value: SortValue): string => String(normalizeSortValue(value));
+
+const compareSortValue = (a: SortValue, b: SortValue): number => {
+    const aEmpty = a === null || a === undefined;
+    const bEmpty = b === null || b === undefined;
+    if (aEmpty && bEmpty) return 0;
+    if (aEmpty) return 1;
+    if (bEmpty) return -1;
+
+    const av = normalizeSortValue(a);
+    const bv = normalizeSortValue(b);
+
+    if (typeof av === 'number' && typeof bv === 'number') return av - bv;
+    return String(av).localeCompare(String(bv), undefined, { numeric: true, sensitivity: 'base' });
+};
+
+export const collectSortConfig = <T,>(columns: Column<T>[]): Map<string, SortConfig<T>> => {
+    const map = new Map<string, SortConfig<T>>();
+
+    const visit = (col: Column<T> | ColumnType<T>) => {
+        if ('children' in col && Array.isArray(col.children) && col.children.length > 0) {
+            col.children.forEach(visit);
+            return;
+        }
+
+        const key = String(col.key);
+        if (col.sorter || col.sortValue) {
+            map.set(key, { sortValue: col.sortValue, sorter: col.sorter });
+        }
+    };
+
+    columns.forEach(visit);
+    return map;
+};
+
+export const sortDataByConfig = <T,>(
+    data: T[],
+    sortState: SortState,
+    sortConfigByKey: Map<string, SortConfig<T>>
+): T[] => {
+    if (!sortState) return data;
+    const config = sortConfigByKey.get(sortState.key);
+    if (!config) return data;
+
+    const entries = data.map((item, index) => ({
+        item,
+        index,
+        value: config.sortValue ? config.sortValue(item) : undefined,
+    }));
+
+    const compare = (a: (typeof entries)[number], b: (typeof entries)[number]) => {
+        const base = config.sorter ? config.sorter(a.item, b.item) : compareSortValue(a.value, b.value);
+        if (base !== 0) return sortState.direction === 'asc' ? base : -base;
+        return a.index - b.index;
+    };
+
+    const next = [...entries];
+    next.sort(compare);
+    return next.map((entry) => entry.item);
+};
+
+export const filterDataByConfig = <T,>(
+    data: T[],
+    filterState: FilterState | undefined,
+    sortConfigByKey: Map<string, SortConfig<T>>
+): T[] => {
+    if (!filterState) return data;
+
+    const entries = Object.entries(filterState).filter(([, v]) => (v?.excluded?.length ?? 0) > 0);
+    if (entries.length === 0) return data;
+
+    const excludedMap = new Map<string, Set<string>>();
+    entries.forEach(([key, value]) => {
+        excludedMap.set(String(key), new Set((value?.excluded ?? []).map(String)));
+    });
+
+    return data.filter((item) => {
+        for (const [colKey, excluded] of excludedMap.entries()) {
+            const config = sortConfigByKey.get(colKey);
+            if (!config?.sortValue) continue;
+            const raw = config.sortValue(item);
+            const key = normalizeFilterKey(raw);
+            if (excluded.has(key)) return false;
+        }
+        return true;
+    });
+};
 
 const loadPersistedTableState = (storageKey?: string): PersistedTableState | null => {
     if (!storageKey) return null;
@@ -367,6 +492,8 @@ const useTable = <T,>({
                         header: col.header,
                         width: col.width,
                         filter: col.filter,
+                        sortValue: col.sortValue,
+                        sorter: col.sorter,
                     } as ColumnType<T>,
                 ];
             }),
@@ -825,6 +952,12 @@ type AirTableContextValue<T> = {
 
     pinnedColumnKeys: string[];
     setPinnedColumnKeys: (keys: string[]) => void;
+
+    filterState: FilterState;
+    setFilterState: (next: FilterState) => void;
+    sortState: SortState;
+    setSortState: (next: SortState) => void;
+    sortConfigByKey: Map<string, SortConfig<T>>;
 };
 
 type Internal = AirTableContextValue<unknown>;
@@ -861,10 +994,55 @@ const AirTableInner = <T,>({
     persistExpandedRowKeys = false,
 
     fillContainerWidth = true, // ✅ 기본은 켜두고(원하면 false로 바꿔도 됨)
+    sortState: sortStateProp,
+    defaultSortState = null,
+    onSortChange,
+    sortMode = 'internal',
+    filterState: filterStateProp,
+    defaultFilterState = {},
+    onFilterChange,
+    filterMode = 'internal',
+    filterOptionsData,
 }: AirTableProps<T>) => {
     const wrapperRef = useRef<HTMLDivElement | null>(null);
     const scrollRef = useRef<HTMLDivElement | null>(null);
     const tableAreaRef = useRef<HTMLDivElement | null>(null);
+
+    const sortConfigByKey = useMemo(() => collectSortConfig(columns), [columns]);
+
+    const isSortControlled = sortStateProp !== undefined;
+    const [innerSortState, setInnerSortState] = useState<SortState>(defaultSortState);
+    const sortState = isSortControlled ? (sortStateProp as SortState) : innerSortState;
+
+    const setSortState = useCallback(
+        (next: SortState) => {
+            if (!isSortControlled) setInnerSortState(next);
+            onSortChange?.(next);
+        },
+        [isSortControlled, onSortChange]
+    );
+
+    const isFilterControlled = filterStateProp !== undefined;
+    const [innerFilterState, setInnerFilterState] = useState<FilterState>(defaultFilterState);
+    const filterState = isFilterControlled ? (filterStateProp as FilterState) : innerFilterState;
+
+    const setFilterState = useCallback(
+        (next: FilterState) => {
+            if (!isFilterControlled) setInnerFilterState(next);
+            onFilterChange?.(next);
+        },
+        [isFilterControlled, onFilterChange]
+    );
+
+    const filteredData = useMemo(
+        () => (filterMode === 'internal' ? filterDataByConfig(data, filterState, sortConfigByKey) : data),
+        [data, filterState, sortConfigByKey, filterMode]
+    );
+
+    const sortedData = useMemo(
+        () => (sortMode === 'internal' ? sortDataByConfig(filteredData, sortState, sortConfigByKey) : filteredData),
+        [filteredData, sortState, sortConfigByKey, sortMode]
+    );
 
     const containerWidth = useContainerWidth(wrapperRef);
 
@@ -881,14 +1059,14 @@ const AirTableInner = <T,>({
     const expandableRowKeys = useMemo(() => {
         const keys: string[] = [];
 
-        data.forEach((item, ri) => {
+        sortedData.forEach((item, ri) => {
             const rowKey = getRowKey({ item, ri, rowKeyField: rowKeyField ? String(rowKeyField) : undefined });
             const canExpand = getRowCanExpand ? getRowCanExpand(item, ri) : !!getExpandedRows;
             if (canExpand) keys.push(rowKey);
         });
 
         return keys;
-    }, [data, rowKeyField, getRowCanExpand, getExpandedRows]);
+    }, [sortedData, rowKeyField, getRowCanExpand, getExpandedRows]);
 
     useEffect(() => {
         if (!persistExpandedRowKeys) {
@@ -933,7 +1111,7 @@ const AirTableInner = <T,>({
 
     const state = useTable<T>({
         columns,
-        data,
+        data: sortedData,
         defaultColWidth,
         containerPaddingPx: 0,
         containerWidth,
@@ -1150,7 +1328,7 @@ const AirTableInner = <T,>({
 
     const value = {
         props: {
-            data,
+            data: sortedData,
             columns,
             rowKeyField,
             defaultColWidth,
@@ -1167,6 +1345,7 @@ const AirTableInner = <T,>({
             getRowLevel,
             defaultExpandedRowKeys,
             enableAnimation,
+            filterOptionsData,
         },
         wrapperRef,
         scrollRef,
@@ -1215,6 +1394,12 @@ const AirTableInner = <T,>({
 
         pinnedColumnKeys,
         setPinnedColumnKeys,
+
+        filterState,
+        setFilterState,
+        sortState,
+        setSortState,
+        sortConfigByKey,
     };
 
     return (

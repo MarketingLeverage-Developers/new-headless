@@ -11,6 +11,10 @@ export const Ghost = <T,>({ className }: GhostProps) => {
     const { ghost, lastMouseClientRef, props, state } = useAirTableContext<T>();
 
     const ghostRef = useRef<HTMLDivElement | null>(null);
+    const MOVE_THRESHOLD_PX = 6;
+
+    const hasMoved =
+        ghost && (Math.abs(ghost.offsetX ?? 0) >= MOVE_THRESHOLD_PX || Math.abs(ghost.offsetY ?? 0) >= MOVE_THRESHOLD_PX);
 
     useEffect(() => {
         if (!ghost) return;
@@ -43,7 +47,7 @@ export const Ghost = <T,>({ className }: GhostProps) => {
         return () => cancelAnimationFrame(rafId);
     }, [ghost, lastMouseClientRef]);
 
-    if (!ghost) return null;
+    if (!ghost || !hasMoved) return null;
     if (typeof document === 'undefined') return null;
 
     return createPortal(
