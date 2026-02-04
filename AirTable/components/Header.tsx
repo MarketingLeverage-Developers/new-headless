@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { MIN_COL_WIDTH, useAirTableContext } from '../AirTable';
-import type { SortConfig, SortDirection, SortValue } from '../AirTable';
+import type { CellRenderMeta, SortConfig, SortDirection, SortValue } from '../AirTable';
 import { FaArrowDown, FaArrowUp } from 'react-icons/fa';
 import { VscFilter, VscFilterFilled } from 'react-icons/vsc';
 import { getThemeColor } from '@/shared/utils/css/getThemeColor';
@@ -45,12 +45,17 @@ const SortIcon = ({
 const DefaultColumnFilter = <T,>({
     colKey,
     data,
+    columnByKey,
     sortConfigByKey,
     filterState,
     setFilterState,
 }: {
     colKey: string;
     data: T[];
+    columnByKey: Map<
+        string,
+        { render: (item: T, index: number, meta: CellRenderMeta<T>) => React.ReactElement }
+    >;
     sortConfigByKey: Map<string, SortConfig<T>>;
     filterState: Record<string, { excluded: string[] }>;
     setFilterState: (next: Record<string, { excluded: string[] }>) => void;
@@ -65,11 +70,27 @@ const DefaultColumnFilter = <T,>({
     const options = useMemo(() => {
         if (!config?.sortValue) return [];
         const map = new Map<string, { key: string; label: string; count: number }>();
+        const column = columnByKey.get(colKey);
+        const fallbackMeta: CellRenderMeta<T> = {
+            rowKey: '',
+            ri: 0,
+            level: 0,
+            toggleRowExpanded: () => undefined,
+            isRowExpanded: () => false,
+        };
 
-        data.forEach((row) => {
+        data.forEach((row, index) => {
             const raw = config.sortValue ? config.sortValue(row) : undefined;
             const key = getFilterKey(raw);
-            const label = formatFilterLabel(raw);
+            let label = '';
+            if (column?.render) {
+                const meta = { ...fallbackMeta, rowKey: `filter-${colKey}-${index}`, ri: index };
+                const rendered = column.render(row, index, meta);
+                label = extractTextFromNode(rendered).trim();
+            }
+            if (!label) {
+                label = formatFilterLabel(raw);
+            }
             const prev = map.get(key);
             if (prev) {
                 prev.count += 1;
@@ -81,7 +102,7 @@ const DefaultColumnFilter = <T,>({
         const list = Array.from(map.values());
         list.sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true, sensitivity: 'base' }));
         return list;
-    }, [config, data]);
+    }, [config, data, colKey, columnByKey]);
 
     const filteredOptions = useMemo(() => {
         const q = keyword.trim().toLowerCase();
@@ -275,6 +296,16 @@ const getFilterKey = (value: SortValue): string => {
     return String(value);
 };
 
+const extractTextFromNode = (node: React.ReactNode): string => {
+    if (node === null || node === undefined || typeof node === 'boolean') return '';
+    if (typeof node === 'string' || typeof node === 'number') return String(node);
+    if (Array.isArray(node)) return node.map(extractTextFromNode).join('');
+    if (React.isValidElement(node)) {
+        return extractTextFromNode(node.props?.children);
+    }
+    return '';
+};
+
 const itemStyle: React.CSSProperties = {
     width: '100%',
     border: 'none',
@@ -408,6 +439,10 @@ export const Header = <T,>({ className, headerCellClassName, resizeHandleClassNa
     const { data, defaultColWidth = 160 } = props;
     const filterOptionsData = props.filterOptionsData ?? data;
     const { columnRow, startColumnDrag, visibleColumnKeys, setVisibleColumnKeys } = state;
+    const columnByKey = useMemo(
+        () => new Map(state.allLeafColumns.map((col) => [col.key, col])),
+        [state.allLeafColumns]
+    );
 
     const enableAnimation = props.enableAnimation ?? false;
 
@@ -608,6 +643,7 @@ export const Header = <T,>({ className, headerCellClassName, resizeHandleClassNa
             <DefaultColumnFilter<T>
                 colKey={col.key}
                 data={filterOptionsData}
+                columnByKey={columnByKey}
                 sortConfigByKey={sortConfigByKey}
                 filterState={filterState}
                 setFilterState={setFilterState}
