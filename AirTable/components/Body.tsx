@@ -3,6 +3,7 @@ import type { CellRenderMeta } from '../AirTable';
 import { useAirTableContext } from '../AirTable';
 import styles from './Body.module.scss';
 import { AnimatePresence, motion } from 'framer-motion';
+import { getThemeColor } from '@/shared/utils/css/getThemeColor';
 
 type HeightState = number | 'auto';
 
@@ -169,13 +170,7 @@ export const Body = <T,>({
     } = useAirTableContext<T>();
 
     const { drag, rows, pinnedColumnKeys } = state;
-    const {
-        getRowStyle,
-        detailRenderer,
-        getRowCanExpand,
-        getExpandedRows,
-        enableAnimation = false,
-    } = props;
+    const { getRowStyle, detailRenderer, getRowCanExpand, getExpandedRows, enableAnimation = false } = props;
     const animationRowLimit = props.animationRowLimit ?? 200;
     const getAnimationMode = () => {
         if (typeof window === 'undefined') return 'row';
@@ -204,7 +199,8 @@ export const Body = <T,>({
         if (internal) {
             const style = window.getComputedStyle(internal);
             const overflowY = style.overflowY;
-            const canScrollY = (overflowY === 'auto' || overflowY === 'scroll') && internal.scrollHeight > internal.clientHeight + 1;
+            const canScrollY =
+                (overflowY === 'auto' || overflowY === 'scroll') && internal.scrollHeight > internal.clientHeight + 1;
             if (canScrollY) return internal;
         }
 
@@ -213,7 +209,8 @@ export const Body = <T,>({
         while (parent) {
             const style = window.getComputedStyle(parent);
             const overflowY = style.overflowY;
-            const canScrollY = (overflowY === 'auto' || overflowY === 'scroll') && parent.scrollHeight > parent.clientHeight + 1;
+            const canScrollY =
+                (overflowY === 'auto' || overflowY === 'scroll') && parent.scrollHeight > parent.clientHeight + 1;
             if (canScrollY) return parent;
             parent = parent.parentElement;
         }
@@ -330,8 +327,7 @@ export const Body = <T,>({
                                 const rowKey = row.key;
 
                                 const canExpand =
-                                    !!detailRenderer &&
-                                    (getRowCanExpand ? getRowCanExpand(row.item, actualRi) : true);
+                                    !!detailRenderer && (getRowCanExpand ? getRowCanExpand(row.item, actualRi) : true);
 
                                 const expanded = canExpand && isRowExpanded(rowKey);
                                 const rowBg = rowStyleRaw.backgroundColor;
@@ -384,7 +380,7 @@ export const Body = <T,>({
                                                     id: `__cell_${row.key}_${colKey}`,
                                                     className: [
                                                         cellClassName ?? '',
-                                                        selected ? selectedCellClassName ?? '' : '',
+                                                        selected ? (selectedCellClassName ?? '') : '',
                                                     ].join(' '),
                                                     onMouseDown: (e: React.MouseEvent) => {
                                                         if (drag.draggingKey) return;
@@ -524,7 +520,7 @@ export const Body = <T,>({
                                                     id={`__cell_${row.key}_${colKey}`}
                                                     className={[
                                                         cellClassName ?? '',
-                                                        selected ? selectedCellClassName ?? '' : '',
+                                                        selected ? (selectedCellClassName ?? '') : '',
                                                     ].join(' ')}
                                                     onMouseDown={(e) => {
                                                         if (drag.draggingKey) return;
@@ -572,7 +568,7 @@ export const Body = <T,>({
                                                     style={{
                                                         backgroundColor: cellBg,
                                                         ...getShiftStyle(colKey),
-                                                        ...getPinnedStyle(colKey, cellBg ?? '#fff'),
+                                                        ...getPinnedStyle(colKey, cellBg ?? getThemeColor('White1')),
                                                         ...(isIndentTarget ? { paddingLeft: indentPadding } : {}),
                                                     }}
                                                 >
