@@ -1,4 +1,4 @@
-import React, { useLayoutEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { CellRenderMeta } from '../AirTable';
 import { useAirTableContext } from '../AirTable';
 import styles from './Body.module.scss';
@@ -156,6 +156,7 @@ export const Body = <T,>({
     const {
         props,
         tableAreaRef,
+        scrollRef,
         state,
         baseOrder,
         gridTemplateColumns,
@@ -168,7 +169,128 @@ export const Body = <T,>({
     } = useAirTableContext<T>();
 
     const { drag, rows, pinnedColumnKeys } = state;
-    const { getRowStyle, detailRenderer, getRowCanExpand, enableAnimation = false } = props;
+    const {
+        getRowStyle,
+        detailRenderer,
+        getRowCanExpand,
+        getExpandedRows,
+        enableAnimation = false,
+    } = props;
+    const animationRowLimit = props.animationRowLimit ?? 200;
+    const getAnimationMode = () => {
+        if (typeof window === 'undefined') return 'row';
+        const value = (window as any).__AIRTABLE_ANIM_MODE__;
+        return value === 'full' || value === 'row' ? value : 'row';
+    };
+    const enableVirtualization = props.enableVirtualization ?? false;
+    const virtualRowHeight = props.virtualRowHeight ?? 44;
+    const virtualOverscan = props.virtualOverscan ?? 6;
+    const canVirtualize = enableVirtualization && !detailRenderer && !getExpandedRows;
+    const animationMode = getAnimationMode();
+    const shouldAnimate =
+        enableAnimation && !canVirtualize && (animationRowLimit <= 0 || rows.length <= animationRowLimit);
+    const useFullCellAnimation = shouldAnimate && animationMode === 'full';
+
+    const bodyRef = useRef<HTMLDivElement | null>(null);
+    const virtualScrollRef = useRef<HTMLElement | null>(null);
+    const [virtualState, setVirtualState] = useState<{ top: number; height: number }>({
+        top: 0,
+        height: 0,
+    });
+
+    const resolveVirtualScrollEl = useCallback(() => {
+        if (typeof window === 'undefined') return scrollRef.current;
+        const internal = scrollRef.current;
+        if (internal) {
+            const style = window.getComputedStyle(internal);
+            const overflowY = style.overflowY;
+            const canScrollY = (overflowY === 'auto' || overflowY === 'scroll') && internal.scrollHeight > internal.clientHeight + 1;
+            if (canScrollY) return internal;
+        }
+
+        const root = bodyRef.current?.parentElement;
+        let parent = root?.parentElement ?? null;
+        while (parent) {
+            const style = window.getComputedStyle(parent);
+            const overflowY = style.overflowY;
+            const canScrollY = (overflowY === 'auto' || overflowY === 'scroll') && parent.scrollHeight > parent.clientHeight + 1;
+            if (canScrollY) return parent;
+            parent = parent.parentElement;
+        }
+
+        return internal;
+    }, [scrollRef]);
+
+    const updateVirtualState = useCallback(() => {
+        const scrollEl = virtualScrollRef.current ?? resolveVirtualScrollEl();
+        const bodyEl = bodyRef.current;
+        if (!scrollEl || !bodyEl) return;
+
+        if (scrollEl !== virtualScrollRef.current) {
+            virtualScrollRef.current = scrollEl;
+        }
+
+        const scrollTop = scrollEl.scrollTop;
+        const scrollRect = scrollEl.getBoundingClientRect();
+        const bodyRect = bodyEl.getBoundingClientRect();
+        const bodyTopInScroll = bodyRect.top - scrollRect.top + scrollTop;
+        const bodyBottomInScroll = bodyTopInScroll + bodyEl.offsetHeight;
+        const viewportTop = scrollTop;
+        const viewportBottom = scrollTop + scrollEl.clientHeight;
+        const visibleTop = Math.max(bodyTopInScroll, viewportTop);
+        const visibleBottom = Math.min(bodyBottomInScroll, viewportBottom);
+        const bodyScrollTop = Math.max(0, visibleTop - bodyTopInScroll);
+        const viewportHeight = Math.max(0, visibleBottom - visibleTop);
+
+        setVirtualState({ top: bodyScrollTop, height: viewportHeight });
+    }, [resolveVirtualScrollEl]);
+
+    useEffect(() => {
+        if (!canVirtualize) return;
+        updateVirtualState();
+    }, [canVirtualize, rows.length, virtualRowHeight, updateVirtualState]);
+
+    useEffect(() => {
+        if (!canVirtualize) return;
+        const scrollEl = resolveVirtualScrollEl();
+        if (!scrollEl) return;
+
+        let raf = 0;
+        const handle = () => {
+            if (raf) return;
+            raf = window.requestAnimationFrame(() => {
+                raf = 0;
+                updateVirtualState();
+            });
+        };
+
+        handle();
+        scrollEl.addEventListener('scroll', handle);
+        window.addEventListener('resize', handle);
+        return () => {
+            scrollEl.removeEventListener('scroll', handle);
+            window.removeEventListener('resize', handle);
+            if (raf) window.cancelAnimationFrame(raf);
+        };
+    }, [canVirtualize, resolveVirtualScrollEl, updateVirtualState]);
+
+    let rowsToRender = rows;
+    let rowIndexOffset = 0;
+    let paddingTop = 0;
+    let paddingBottom = 0;
+
+    if (canVirtualize && rows.length > 0) {
+        const startIndex = Math.max(0, Math.floor(virtualState.top / virtualRowHeight) - virtualOverscan);
+        const endIndex = Math.min(
+            rows.length - 1,
+            Math.ceil((virtualState.top + virtualState.height) / virtualRowHeight) + virtualOverscan
+        );
+
+        rowsToRender = rows.slice(startIndex, endIndex + 1);
+        rowIndexOffset = startIndex;
+        paddingTop = startIndex * virtualRowHeight;
+        paddingBottom = Math.max(0, (rows.length - endIndex - 1) * virtualRowHeight);
+    }
 
     const beginSelect = (ri: number, ci: number) => {
         setSelection({ start: { ri, ci }, end: { ri, ci }, isSelecting: true });
@@ -187,6 +309,7 @@ export const Body = <T,>({
     return (
         <div
             className={className}
+            ref={bodyRef}
             style={{
                 ...style,
                 userSelect: 'none',
@@ -198,14 +321,17 @@ export const Body = <T,>({
         >
             <div ref={tableAreaRef} style={{ position: 'relative', minWidth: 'fit-content', width: 'fit-content' }}>
                 <div>
-                    {enableAnimation ? (
+                    {paddingTop > 0 && <div style={{ height: paddingTop }} />}
+                    {shouldAnimate ? (
                         <AnimatePresence initial={false}>
-                            {rows.map((row, ri) => {
-                                const rowStyleRaw = getRowStyle?.(row.item, ri) ?? {};
+                            {rowsToRender.map((row, ri) => {
+                                const actualRi = rowIndexOffset + ri;
+                                const rowStyleRaw = getRowStyle?.(row.item, actualRi) ?? {};
                                 const rowKey = row.key;
 
                                 const canExpand =
-                                    !!detailRenderer && (getRowCanExpand ? getRowCanExpand(row.item, ri) : true);
+                                    !!detailRenderer &&
+                                    (getRowCanExpand ? getRowCanExpand(row.item, actualRi) : true);
 
                                 const expanded = canExpand && isRowExpanded(rowKey);
                                 const rowBg = rowStyleRaw.backgroundColor;
@@ -214,7 +340,7 @@ export const Body = <T,>({
 
                                 const meta: CellRenderMeta<T> = {
                                     rowKey,
-                                    ri,
+                                    ri: actualRi,
                                     level: row.level,
                                     toggleRowExpanded,
                                     isRowExpanded,
@@ -227,8 +353,8 @@ export const Body = <T,>({
                                 return (
                                     <React.Fragment key={rowKey}>
                                         <motion.div
-                                            layout
-                                            layoutId={`air-row-${rowKey}`}
+                                            layout={useFullCellAnimation ? true : 'position'}
+                                            layoutId={useFullCellAnimation ? `air-row-${rowKey}` : undefined}
                                             initial={{ opacity: 0, y: -4 }}
                                             animate={{ opacity: 1, y: 0 }}
                                             exit={{ opacity: 0, y: -4 }}
@@ -247,78 +373,87 @@ export const Body = <T,>({
                                                 const cell = cellMap.get(colKey);
                                                 if (!cell) return null;
 
-                                                const selected = isCellSelected(ri, ci);
+                                                const selected = isCellSelected(actualRi, ci);
                                                 const cellBg = selected ? undefined : rowBg ? rowBg : undefined;
 
                                                 const isIndentTarget = colKey === indentTargetKey;
                                                 const indentPadding = isChild ? row.level * INDENT_PX : 0;
 
-                                                return (
+                                                const cellKey = `c-${rowKey}-${colKey}`;
+                                                const cellProps = {
+                                                    id: `__cell_${row.key}_${colKey}`,
+                                                    className: [
+                                                        cellClassName ?? '',
+                                                        selected ? selectedCellClassName ?? '' : '',
+                                                    ].join(' '),
+                                                    onMouseDown: (e: React.MouseEvent) => {
+                                                        if (drag.draggingKey) return;
+                                                        if (e.button !== 0) return;
+                                                        e.preventDefault();
+
+                                                        const target = e.target as HTMLElement;
+                                                        if (target.closest('[data-row-toggle="true"]')) return;
+
+                                                        beginSelect(actualRi, ci);
+                                                    },
+                                                    onMouseEnter: () => {
+                                                        if (drag.draggingKey) return;
+                                                        updateSelect(actualRi, ci);
+                                                    },
+                                                    onContextMenu: (e: React.MouseEvent) => {
+                                                        if (drag.draggingKey) return;
+
+                                                        e.preventDefault();
+                                                        e.stopPropagation();
+
+                                                        const alreadySelected = isCellSelected(actualRi, ci);
+
+                                                        if (!alreadySelected) {
+                                                            setSelection({
+                                                                start: { ri: actualRi, ci },
+                                                                end: { ri: actualRi, ci },
+                                                                isSelecting: false,
+                                                            });
+                                                        }
+
+                                                        window.dispatchEvent(
+                                                            new CustomEvent('AIR_TABLE_OPEN_CONTEXT_MENU', {
+                                                                detail: {
+                                                                    x: e.clientX,
+                                                                    y: e.clientY,
+                                                                    ri: actualRi,
+                                                                    ci,
+                                                                    rowKey: row.key,
+                                                                    colKey,
+                                                                },
+                                                            })
+                                                        );
+                                                    },
+                                                    style: {
+                                                        backgroundColor: cellBg,
+                                                        ...getShiftStyle(colKey),
+                                                        ...getPinnedStyle(colKey, cellBg ?? '#fff'),
+                                                        ...(isIndentTarget ? { paddingLeft: indentPadding } : {}),
+                                                    },
+                                                };
+
+                                                return useFullCellAnimation ? (
                                                     <motion.div
+                                                        key={cellKey}
                                                         layout
                                                         layoutId={`air-cell-${rowKey}-${colKey}`}
-                                                        key={`c-${rowKey}-${colKey}`}
-                                                        id={`__cell_${row.key}_${colKey}`}
-                                                        className={[
-                                                            cellClassName ?? '',
-                                                            selected ? selectedCellClassName ?? '' : '',
-                                                        ].join(' ')}
                                                         transition={{
                                                             duration: 0.26,
                                                             ease: [0.22, 1, 0.36, 1],
                                                         }}
-                                                        onMouseDown={(e) => {
-                                                            if (drag.draggingKey) return;
-                                                            if (e.button !== 0) return;
-                                                            e.preventDefault();
-
-                                                            const target = e.target as HTMLElement;
-                                                            if (target.closest('[data-row-toggle="true"]')) return;
-
-                                                            beginSelect(ri, ci);
-                                                        }}
-                                                        onMouseEnter={() => {
-                                                            if (drag.draggingKey) return;
-                                                            updateSelect(ri, ci);
-                                                        }}
-                                                        onContextMenu={(e) => {
-                                                            if (drag.draggingKey) return;
-
-                                                            e.preventDefault();
-                                                            e.stopPropagation();
-
-                                                            const alreadySelected = isCellSelected(ri, ci);
-
-                                                            if (!alreadySelected) {
-                                                                setSelection({
-                                                                    start: { ri, ci },
-                                                                    end: { ri, ci },
-                                                                    isSelecting: false,
-                                                                });
-                                                            }
-
-                                                            window.dispatchEvent(
-                                                                new CustomEvent('AIR_TABLE_OPEN_CONTEXT_MENU', {
-                                                                    detail: {
-                                                                        x: e.clientX,
-                                                                        y: e.clientY,
-                                                                        ri,
-                                                                        ci,
-                                                                        rowKey: row.key,
-                                                                        colKey,
-                                                                    },
-                                                                })
-                                                            );
-                                                        }}
-                                                        style={{
-                                                            backgroundColor: cellBg,
-                                                            ...getShiftStyle(colKey),
-                                                            ...getPinnedStyle(colKey, cellBg ?? '#fff'),
-                                                            ...(isIndentTarget ? { paddingLeft: indentPadding } : {}),
-                                                        }}
+                                                        {...cellProps}
                                                     >
-                                                        {cell.render(row.item, ri, meta)}
+                                                        {cell.render(row.item, actualRi, meta)}
                                                     </motion.div>
+                                                ) : (
+                                                    <div key={cellKey} {...cellProps}>
+                                                        {cell.render(row.item, actualRi, meta)}
+                                                    </div>
                                                 );
                                             })}
                                         </motion.div>
@@ -330,7 +465,7 @@ export const Body = <T,>({
                                                 rowClassName={detailRowClassName}
                                                 cellClassName={detailCellClassName}
                                             >
-                                                {detailRenderer?.({ row: row.item, ri })}
+                                                {detailRenderer?.({ row: row.item, ri: actualRi })}
                                             </ExpandableDetailRow>
                                         )}
                                     </React.Fragment>
@@ -338,12 +473,13 @@ export const Body = <T,>({
                             })}
                         </AnimatePresence>
                     ) : (
-                        rows.map((row, ri) => {
-                            const rowStyleRaw = getRowStyle?.(row.item, ri) ?? {};
+                        rowsToRender.map((row, ri) => {
+                            const actualRi = rowIndexOffset + ri;
+                            const rowStyleRaw = getRowStyle?.(row.item, actualRi) ?? {};
                             const rowKey = row.key;
 
                             const canExpand =
-                                !!detailRenderer && (getRowCanExpand ? getRowCanExpand(row.item, ri) : true);
+                                !!detailRenderer && (getRowCanExpand ? getRowCanExpand(row.item, actualRi) : true);
 
                             const expanded = canExpand && isRowExpanded(rowKey);
                             const rowBg = rowStyleRaw.backgroundColor;
@@ -352,7 +488,7 @@ export const Body = <T,>({
 
                             const meta: CellRenderMeta<T> = {
                                 rowKey,
-                                ri,
+                                ri: actualRi,
                                 level: row.level,
                                 toggleRowExpanded,
                                 isRowExpanded,
@@ -376,7 +512,7 @@ export const Body = <T,>({
                                             const cell = cellMap.get(colKey);
                                             if (!cell) return null;
 
-                                            const selected = isCellSelected(ri, ci);
+                                            const selected = isCellSelected(actualRi, ci);
                                             const cellBg = selected ? undefined : rowBg ? rowBg : undefined;
 
                                             const isIndentTarget = colKey === indentTargetKey;
@@ -398,11 +534,11 @@ export const Body = <T,>({
                                                         const target = e.target as HTMLElement;
                                                         if (target.closest('[data-row-toggle="true"]')) return;
 
-                                                        beginSelect(ri, ci);
+                                                        beginSelect(actualRi, ci);
                                                     }}
                                                     onMouseEnter={() => {
                                                         if (drag.draggingKey) return;
-                                                        updateSelect(ri, ci);
+                                                        updateSelect(actualRi, ci);
                                                     }}
                                                     onContextMenu={(e) => {
                                                         if (drag.draggingKey) return;
@@ -410,12 +546,12 @@ export const Body = <T,>({
                                                         e.preventDefault();
                                                         e.stopPropagation();
 
-                                                        const alreadySelected = isCellSelected(ri, ci);
+                                                        const alreadySelected = isCellSelected(actualRi, ci);
 
                                                         if (!alreadySelected) {
                                                             setSelection({
-                                                                start: { ri, ci },
-                                                                end: { ri, ci },
+                                                                start: { ri: actualRi, ci },
+                                                                end: { ri: actualRi, ci },
                                                                 isSelecting: false,
                                                             });
                                                         }
@@ -425,7 +561,7 @@ export const Body = <T,>({
                                                                 detail: {
                                                                     x: e.clientX,
                                                                     y: e.clientY,
-                                                                    ri,
+                                                                    ri: actualRi,
                                                                     ci,
                                                                     rowKey: row.key,
                                                                     colKey,
@@ -440,7 +576,7 @@ export const Body = <T,>({
                                                         ...(isIndentTarget ? { paddingLeft: indentPadding } : {}),
                                                     }}
                                                 >
-                                                    {cell.render(row.item, ri, meta)}
+                                                    {cell.render(row.item, actualRi, meta)}
                                                 </div>
                                             );
                                         })}
@@ -453,13 +589,14 @@ export const Body = <T,>({
                                             rowClassName={detailRowClassName}
                                             cellClassName={detailCellClassName}
                                         >
-                                            {detailRenderer?.({ row: row.item, ri })}
+                                            {detailRenderer?.({ row: row.item, ri: actualRi })}
                                         </ExpandableDetailRow>
                                     )}
                                 </React.Fragment>
                             );
                         })
                     )}
+                    {paddingBottom > 0 && <div style={{ height: paddingBottom }} />}
                 </div>
             </div>
         </div>

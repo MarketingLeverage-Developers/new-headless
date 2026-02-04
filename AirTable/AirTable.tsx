@@ -84,6 +84,10 @@ export type AirTableProps<T> = {
     getRowLevel?: (row: T, ri: number) => number;
     defaultExpandedRowKeys?: string[];
     enableAnimation?: boolean;
+    animationRowLimit?: number;
+    enableVirtualization?: boolean;
+    virtualRowHeight?: number;
+    virtualOverscan?: number;
     persistExpandedRowKeys?: boolean;
 
     /** ✅ 추가: 남는 폭 채우기 on/off */
@@ -991,6 +995,10 @@ const AirTableInner = <T,>({
     getRowLevel,
     defaultExpandedRowKeys = [],
     enableAnimation,
+    animationRowLimit,
+    enableVirtualization,
+    virtualRowHeight,
+    virtualOverscan,
     persistExpandedRowKeys = false,
 
     fillContainerWidth = true, // ✅ 기본은 켜두고(원하면 false로 바꿔도 됨)
@@ -1043,6 +1051,18 @@ const AirTableInner = <T,>({
         () => (sortMode === 'internal' ? sortDataByConfig(filteredData, sortState, sortConfigByKey) : filteredData),
         [filteredData, sortState, sortConfigByKey, sortMode]
     );
+
+    const perfEnabled = typeof window !== 'undefined' && Boolean((window as any).__AIRTABLE_PERF__);
+    const perfLabel = useMemo(() => {
+        if (typeof window === 'undefined') return storageKey ?? 'AirTable';
+        const globalLabel = (window as any).__AIRTABLE_PERF_LABEL__;
+        return typeof globalLabel === 'string' && globalLabel.trim() !== ''
+            ? globalLabel
+            : storageKey ?? 'AirTable';
+    }, [storageKey]);
+    const perfRef = useRef<{ reason: string; start: number } | null>(null);
+    const prevSortRef = useRef<SortState | undefined>(undefined);
+    const prevFilterRef = useRef<FilterState | undefined>(undefined);
 
     const containerWidth = useContainerWidth(wrapperRef);
 
@@ -1122,6 +1142,49 @@ const AirTableInner = <T,>({
         getRowLevel,
         expandedRowKeys,
     });
+
+    useEffect(() => {
+        if (!perfEnabled) return;
+        if (prevSortRef.current === undefined) {
+            prevSortRef.current = sortState ?? null;
+            return;
+        }
+
+        const prev = prevSortRef.current;
+        if (prev?.key === sortState?.key && prev?.direction === sortState?.direction) return;
+
+        prevSortRef.current = sortState ?? null;
+        perfRef.current = { reason: 'sort', start: performance.now() };
+    }, [perfEnabled, sortState]);
+
+    useEffect(() => {
+        if (!perfEnabled) return;
+        if (prevFilterRef.current === undefined) {
+            prevFilterRef.current = filterState;
+            return;
+        }
+        if (prevFilterRef.current === filterState) return;
+
+        prevFilterRef.current = filterState;
+        perfRef.current = { reason: 'filter', start: performance.now() };
+    }, [perfEnabled, filterState]);
+
+    useEffect(() => {
+        if (!perfEnabled || !perfRef.current) return;
+        const { reason, start } = perfRef.current;
+        perfRef.current = null;
+        const total = sortedData.length;
+        const visible = state.rows.length;
+
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                const end = performance.now();
+                const ms = (end - start).toFixed(1);
+                // eslint-disable-next-line no-console
+                console.log(`[AirTable][${perfLabel}] ${reason} total=${total} visible=${visible} ${ms}ms`);
+            });
+        });
+    }, [perfEnabled, perfLabel, sortedData.length, state.rows]);
 
     const {
         columnRow,
@@ -1345,6 +1408,10 @@ const AirTableInner = <T,>({
             getRowLevel,
             defaultExpandedRowKeys,
             enableAnimation,
+            animationRowLimit,
+            enableVirtualization,
+            virtualRowHeight,
+            virtualOverscan,
             filterOptionsData,
         },
         wrapperRef,
