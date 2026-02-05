@@ -5,6 +5,7 @@ import { useAirTableContext } from '../AirTable';
 type ContainerProps = React.HTMLAttributes<HTMLDivElement> & {
     children: React.ReactNode;
     height?: number | string;
+    onScrollElReady?: (el: HTMLDivElement | null) => void;
 };
 
 const toCssSize = (v?: number | string) => {
@@ -28,7 +29,14 @@ const findScrollableParent = (el: HTMLElement | null) => {
     return null;
 };
 
-export const Container = ({ className, children, style, height = '100%', ...rest }: ContainerProps) => {
+export const Container = ({
+    className,
+    children,
+    style,
+    height = '100%',
+    onScrollElReady,
+    ...rest
+}: ContainerProps) => {
     const { scrollRef } = useAirTableContext<any>();
 
     const mergedStyle = useMemo<React.CSSProperties>(
@@ -44,6 +52,13 @@ export const Container = ({ className, children, style, height = '100%', ...rest
         }),
         [style, height]
     );
+
+    useEffect(() => {
+        const el = scrollRef.current;
+        if (!onScrollElReady) return;
+        onScrollElReady(el ?? null);
+        return () => onScrollElReady(null);
+    }, [onScrollElReady, scrollRef]);
 
     useEffect(() => {
         const el = scrollRef.current;
