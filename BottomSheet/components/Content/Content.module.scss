@@ -1,11 +1,13 @@
 .Overlay {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.35);
+    background-color: var(--BackdropColor);
+    backdrop-filter: blur(var(--BackdropBlur));
+    -webkit-backdrop-filter: blur(var(--BackdropWebkitBlur));
     opacity: 0;
     pointer-events: none;
     transition: opacity 180ms ease;
-    z-index: 1000;
+    z-index: var(--z-modal-backdrop, 9000);
 }
 
 .Overlay.open {
@@ -21,10 +23,9 @@
 
     /* iOS 안전 영역 고려 */
     padding-bottom: max(16px, env(safe-area-inset-bottom));
-    background: #fff;
-    border-top-left-radius: 20px;
-    border-top-right-radius: 20px;
-    box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.08);
+    border-top-left-radius: var(--RadiusXl, 20px);
+    border-top-right-radius: var(--RadiusXl, 20px);
+    box-shadow: var(--ShadowMd);
 
     transform: translateY(100%);
     transition: transform 240ms ease;
@@ -50,8 +51,8 @@
 .Handle {
     width: 44px;
     height: 4px;
-    border-radius: 999px;
-    background: #e5e5e5;
+    border-radius: var(--RadiusPill, 9999px);
+    background: var(--Gray4);
     margin: 8px auto 6px;
 
     /* 드래그 제스처 UX */
@@ -107,7 +108,7 @@
     position: fixed;
     bottom: 0;
     left: 0;
-    z-index: 1002;
+    z-index: var(--z-modal, 9001);
     width: 100%;
     background-color: var(--White1);
     padding: var(--padding, 16px);
