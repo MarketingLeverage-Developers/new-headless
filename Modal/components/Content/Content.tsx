@@ -36,7 +36,13 @@ export const Content = ({
 
     return (
         <>
-            <div ref={containerRef} {...props} className={combinedStyle} style={{ ...cssVariables, ...style }}>
+            <div
+                ref={containerRef}
+                {...props}
+                data-modal-content="true"
+                className={combinedStyle}
+                style={{ ...cssVariables, ...style }}
+            >
                 {children}
             </div>
         </>
