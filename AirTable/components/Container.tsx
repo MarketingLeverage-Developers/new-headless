@@ -102,6 +102,7 @@ export const Container = ({
         <div className={className} style={mergedStyle} {...rest}>
             <div
                 ref={scrollRef}
+                className="airtable-scroll"
                 style={{
                     flex: 1,
                     minHeight: 0,
