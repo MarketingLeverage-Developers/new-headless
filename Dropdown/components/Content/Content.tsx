@@ -23,37 +23,20 @@ type ContentProps = React.HTMLAttributes<HTMLDivElement> & {
     collisionPadding?: number;
 };
 
-type PortalLayer = 'base' | 'modal';
-
-const resolvePortalLayer = (anchorEl: HTMLElement | null): PortalLayer => {
-    if (!anchorEl) return 'base';
-    // ✅ Modal(Content) 내부에서 열린 dropdown은 modal 레이어 위에 떠야 한다.
-    // - 그렇지 않으면 포탈이 body에 붙는 구조상 modal(z-index) 뒤로 숨어서 "안 열리는" 것처럼 보일 수 있음.
-    // - BottomSheet 등은 aria-modal="true"로도 판단
-    const inModal = Boolean(anchorEl.closest('[data-modal-content="true"], [aria-modal="true"]'));
-    return inModal ? 'modal' : 'base';
-};
-
-const getPortalRoot = (layer: PortalLayer) => {
+const getPortalRoot = () => {
     if (typeof document === 'undefined') return null;
-    const id = layer === 'modal' ? 'dropdown-portal-root-modal' : 'dropdown-portal-root';
-    let el = document.getElementById(id) as HTMLDivElement | null;
+    let el = document.getElementById('dropdown-portal-root') as HTMLDivElement | null;
     if (!el) {
         el = document.createElement('div');
-        el.id = id;
+        el.id = 'dropdown-portal-root';
         Object.assign(el.style, {
             position: 'fixed',
             inset: '0',
             width: '0',
             height: '0',
             overflow: 'visible',
-            // ✅ Dropdown portal stacking:
-            // - base: page chrome 위, modal/backdrop 아래
-            // - modal: modal content 위 (modal 내부 dropdown이 보이도록)
-            zIndex:
-                layer === 'modal'
-                    ? 'var(--z-dropdown-portal-modal, 9002)'
-                    : 'var(--z-dropdown-portal, 7000)',
+            // ✅ Dropdown should sit above page chrome, but below modals/overlays.
+            zIndex: 'var(--z-dropdown-portal, 7000)',
         });
         document.body.appendChild(el);
     }
@@ -172,8 +155,7 @@ const Content: React.FC<ContentProps> = ({
 
     const [portalRoot, setPortalRoot] = useState<HTMLElement | null>(null);
     useEffect(() => {
-        // 기본은 base 레이어 포탈을 만든다. (닫힘 애니메이션/재사용을 위해 유지)
-        setPortalRoot(getPortalRoot('base'));
+        setPortalRoot(getPortalRoot());
     }, []);
 
     const menuRef = useRef<HTMLDivElement>(null);
@@ -187,8 +169,6 @@ const Content: React.FC<ContentProps> = ({
         const anchorEl = anchorRef.current;
         const menuEl = menuRef.current;
         if (!portalRoot || !anchorEl || !menuEl) return;
-
-        const layer = resolvePortalLayer(anchorEl);
 
         const a = anchorEl.getBoundingClientRect();
         const w = menuEl.offsetWidth;
@@ -205,17 +185,10 @@ const Content: React.FC<ContentProps> = ({
             width: matchTriggerWidth ? `${a.width}px` : undefined,
             visibility: 'visible',
             pointerEvents: 'auto',
-            zIndex: layer === 'modal' ? 'var(--z-dropdown-modal, 9002)' : 'var(--z-dropdown, 7000)',
+            zIndex: 'var(--z-dropdown, 7000)',
             ...styleProp,
         });
     }, [anchorRef, collisionPadding, matchTriggerWidth, offset, placement, portalRoot, styleProp]);
-
-    useLayoutEffect(() => {
-        if (!isOpen) return;
-        const layer = resolvePortalLayer(anchorRef.current);
-        const root = getPortalRoot(layer);
-        if (root && root !== portalRoot) setPortalRoot(root);
-    }, [isOpen, anchorRef, portalRoot]);
 
     useLayoutEffect(() => {
         if (!isOpen) {
