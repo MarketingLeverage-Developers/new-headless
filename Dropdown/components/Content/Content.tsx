@@ -35,8 +35,7 @@ const getPortalRoot = () => {
             width: '0',
             height: '0',
             overflow: 'visible',
-            // ✅ Dropdown should sit above page chrome, but below modals/overlays.
-            zIndex: 'var(--z-dropdown-portal, 7000)',
+            zIndex: '9999',
         });
         document.body.appendChild(el);
     }
@@ -185,7 +184,7 @@ const Content: React.FC<ContentProps> = ({
             width: matchTriggerWidth ? `${a.width}px` : undefined,
             visibility: 'visible',
             pointerEvents: 'auto',
-            zIndex: 'var(--z-dropdown, 7000)',
+            zIndex: 1000,
             ...styleProp,
         });
     }, [anchorRef, collisionPadding, matchTriggerWidth, offset, placement, portalRoot, styleProp]);

@@ -42,7 +42,7 @@
 
 /* 알약 + 흰 카드 */
 .pill {
-    border-radius: var(--RadiusMd, 8px);
+    border-radius: 8px;
 }
 
 .toast {
@@ -52,10 +52,10 @@
     gap: 8px;
     padding: 8px 14px;
     min-height: 34px;
-    background: var(--White1);
-    color: var(--Black1);
-    border: 1px solid color-mix(in srgb, var(--Black1) 10%, transparent);
-    box-shadow: var(--ShadowMd);
+    background: #ffffff;
+    color: #111827;
+    border: 1px solid rgba(16, 24, 40, 0.08);
+    box-shadow: 0 2px 0 rgba(0, 0, 0, 0.02), 0 6px 14px rgba(0, 0, 0, 0.1), 0 12px 26px rgba(0, 0, 0, 0.08);
     font-size: 14px;
     line-height: 1.2;
     white-space: nowrap;
@@ -87,7 +87,7 @@
     line-height: 1;
     cursor: pointer;
     padding: 2px 4px;
-    border-radius: var(--RadiusSm, 6px);
+    border-radius: 6px;
     transition: transform 120ms ease;
 }
 .close:hover {

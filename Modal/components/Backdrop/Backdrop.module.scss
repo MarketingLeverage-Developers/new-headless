@@ -10,7 +10,7 @@
     backdrop-filter: blur(var(--BackdropBlur));
     -webkit-backdrop-filter: blur(var(--BackdropWebkitBlur));
 
-    z-index: var(--z-modal-backdrop, 9000);
+    z-index: 999;
 
     transform-origin: top left;
     transition: opacity 0.3s ease, transform 0.3s ease, background-color 0.25s;
