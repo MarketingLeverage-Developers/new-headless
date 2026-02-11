@@ -73,7 +73,7 @@ export type AirTableProps<T> = {
     defaultColWidth?: number;
     detailRenderer?: (params: { row: T; ri: number }) => React.ReactNode;
     getRowCanExpand?: (row: T, ri: number) => boolean;
-    getRowStyle?: (row: T, index: number) => { backgroundColor?: string };
+    getRowStyle?: (row: T, index: number) => React.CSSProperties;
     storageKey?: string;
     style?: React.CSSProperties;
     children?: React.ReactNode;
@@ -1056,9 +1056,7 @@ const AirTableInner = <T,>({
     const perfLabel = useMemo(() => {
         if (typeof window === 'undefined') return storageKey ?? 'AirTable';
         const globalLabel = (window as any).__AIRTABLE_PERF_LABEL__;
-        return typeof globalLabel === 'string' && globalLabel.trim() !== ''
-            ? globalLabel
-            : storageKey ?? 'AirTable';
+        return typeof globalLabel === 'string' && globalLabel.trim() !== '' ? globalLabel : (storageKey ?? 'AirTable');
     }, [storageKey]);
     const perfRef = useRef<{ reason: string; start: number } | null>(null);
     const prevSortRef = useRef<SortState | undefined>(undefined);
@@ -1180,7 +1178,7 @@ const AirTableInner = <T,>({
             requestAnimationFrame(() => {
                 const end = performance.now();
                 const ms = (end - start).toFixed(1);
-                // eslint-disable-next-line no-console
+
                 console.log(`[AirTable][${perfLabel}] ${reason} total=${total} visible=${visible} ${ms}ms`);
             });
         });
@@ -1317,8 +1315,8 @@ const AirTableInner = <T,>({
             const transition = disableShiftAnimationRef.current
                 ? 'none'
                 : drag.draggingKey
-                ? 'transform 280ms cubic-bezier(0.22, 1, 0.36, 1)'
-                : 'transform 240ms ease';
+                  ? 'transform 280ms cubic-bezier(0.22, 1, 0.36, 1)'
+                  : 'transform 240ms ease';
 
             return { transform: `translateX(${dx}px)`, transition, willChange: 'transform' };
         },

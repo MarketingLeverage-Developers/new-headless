@@ -427,6 +427,7 @@ export const Body = <T,>({
                                                     },
                                                     style: {
                                                         backgroundColor: cellBg,
+                                                        color: rowStyleRaw.color,
                                                         ...getShiftStyle(colKey),
                                                         ...getPinnedStyle(colKey, cellBg ?? getThemeColor('White1')),
                                                         ...(isIndentTarget ? { paddingLeft: indentPadding } : {}),
@@ -567,6 +568,7 @@ export const Body = <T,>({
                                                     }}
                                                     style={{
                                                         backgroundColor: cellBg,
+                                                        color: rowStyleRaw.color,
                                                         ...getShiftStyle(colKey),
                                                         ...getPinnedStyle(colKey, cellBg ?? getThemeColor('White1')),
                                                         ...(isIndentTarget ? { paddingLeft: indentPadding } : {}),
