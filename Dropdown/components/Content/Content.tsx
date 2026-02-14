@@ -35,7 +35,7 @@ const getPortalRoot = () => {
             width: '0',
             height: '0',
             overflow: 'visible',
-            zIndex: '9999',
+            zIndex: '10100',
         });
         document.body.appendChild(el);
     }
@@ -184,7 +184,7 @@ const Content: React.FC<ContentProps> = ({
             width: matchTriggerWidth ? `${a.width}px` : undefined,
             visibility: 'visible',
             pointerEvents: 'auto',
-            zIndex: 1000,
+            zIndex: 10120,
             ...styleProp,
         });
     }, [anchorRef, collisionPadding, matchTriggerWidth, offset, placement, portalRoot, styleProp]);
