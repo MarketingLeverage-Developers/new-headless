@@ -40,26 +40,26 @@
     transform: translateX(-50%);
 }
 
-/* 알약 + 흰 카드 */
+/* granter 카드 토스트 */
 .pill {
-    border-radius: 8px;
+    border-radius: 18px;
 }
 
 .toast {
     pointer-events: auto;
     display: inline-flex;
     align-items: center;
-    gap: 8px;
-    padding: 8px 14px;
-    min-height: 34px;
-    background: #ffffff;
-    color: #111827;
-    border: 1px solid rgba(16, 24, 40, 0.08);
-    box-shadow: 0 2px 0 rgba(0, 0, 0, 0.02), 0 6px 14px rgba(0, 0, 0, 0.1), 0 12px 26px rgba(0, 0, 0, 0.08);
+    gap: 12px;
+    padding: 14px 16px;
+    min-height: 56px;
+    background: var(--granter-gray-50);
+    color: var(--granter-gray-800, var(--granter-gray-900));
+    border: 1px solid var(--granter-gray-200);
+    box-shadow: 0 10px 24px rgba(17, 24, 39, 0.08), 0 2px 6px rgba(17, 24, 39, 0.04);
     font-size: 14px;
-    line-height: 1.2;
-    white-space: nowrap;
-    max-width: 92vw;
+    line-height: 1.45;
+    white-space: normal;
+    max-width: min(420px, calc(100vw - 32px));
     position: relative;
 
     /* ✨ 초기값을 살짝 아래(또는 위) + 투명으로 두어 '훅' 튀는 느낌 제거 */
@@ -71,30 +71,40 @@
 
 /* 이모지/텍스트/닫기 */
 .icon {
-    font-size: 18px;
+    width: 28px;
+    height: 28px;
+    flex: 0 0 28px;
+    align-items: center;
+    justify-content: center;
+    border-radius: 10px;
+    background: var(--granter-slate-150);
+    color: var(--granter-gray-600);
+    font-size: 16px;
     line-height: 1;
     display: inline-flex;
 }
 .text {
+    display: block;
+    color: var(--granter-gray-800, var(--granter-gray-900));
     font-weight: 500;
+    line-height: 20px;
+    letter-spacing: -0.01em;
 }
 .close {
     appearance: none;
     border: 0;
-    background: transparent;
-    color: inherit;
+    background: var(--granter-slate-150);
+    color: var(--granter-gray-500);
     font-size: 16px;
     line-height: 1;
     cursor: pointer;
-    padding: 2px 4px;
-    border-radius: 6px;
-    transition: transform 120ms ease;
+    padding: 6px;
+    border-radius: 10px;
+    transition: background-color 120ms ease, color 120ms ease;
 }
 .close:hover {
-    transform: scale(1.08);
-}
-.close:active {
-    transform: scale(0.98);
+    background: var(--granter-gray-200);
+    color: var(--granter-gray-600);
 }
 
 /* 키프레임: 등장(부드럽게), 퇴장(기존 유지) */

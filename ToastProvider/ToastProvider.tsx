@@ -41,7 +41,7 @@ type Props = React.PropsWithChildren<{ config?: ToastProviderConfig }>;
 
 /** 전역 토스트 상태 제공 (헤드리스) */
 export const ToastProvider: React.FC<Props> = ({ config, children }) => {
-    const { position = 'top-center', defaultDuration = 2400, maxToasts = 4 } = config ?? {};
+    const { position = 'bottom-left', defaultDuration = 2400, maxToasts = 4 } = config ?? {};
 
     const [toasts, setToasts] = useState<Toast[]>([]);
 
