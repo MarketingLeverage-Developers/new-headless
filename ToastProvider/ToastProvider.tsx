@@ -26,6 +26,12 @@ export type ToastProviderConfig = {
     maxToasts?: number; // 최대 동시 노출 개수
 };
 
+export type ToastProviderProps = React.PropsWithChildren<
+    ToastProviderConfig & {
+        config?: ToastProviderConfig;
+    }
+>;
+
 type ToastContextType = {
     toasts: Toast[];
     addToast: (toast: AddToastInput) => string;
@@ -37,11 +43,17 @@ type ToastContextType = {
 
 const ToastContext = createContext<ToastContextType | null>(null);
 
-type Props = React.PropsWithChildren<{ config?: ToastProviderConfig }>;
-
 /** 전역 토스트 상태 제공 (헤드리스) */
-export const ToastProvider: React.FC<Props> = ({ config, children }) => {
-    const { position = 'bottom-left', defaultDuration = 2400, maxToasts = 4 } = config ?? {};
+export const ToastProvider: React.FC<ToastProviderProps> = ({
+    config,
+    position,
+    defaultDuration,
+    maxToasts,
+    children,
+}) => {
+    const resolvedPosition = position ?? config?.position ?? 'bottom-left';
+    const resolvedDefaultDuration = defaultDuration ?? config?.defaultDuration ?? 2400;
+    const resolvedMaxToasts = maxToasts ?? config?.maxToasts ?? 4;
 
     const [toasts, setToasts] = useState<Toast[]>([]);
 
@@ -50,12 +62,12 @@ export const ToastProvider: React.FC<Props> = ({ config, children }) => {
             const id = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
             setToasts((prev) => {
                 const next = [...prev, { ...toast, id }];
-                if (next.length > maxToasts) next.shift();
+                if (next.length > resolvedMaxToasts) next.shift();
                 return next;
             });
             return id;
         },
-        [maxToasts]
+        [resolvedMaxToasts]
     );
 
     const removeToast = useCallback((id: string) => {
@@ -70,10 +82,10 @@ export const ToastProvider: React.FC<Props> = ({ config, children }) => {
             addToast,
             removeToast,
             clearToasts,
-            position,
-            defaultDuration,
+            position: resolvedPosition,
+            defaultDuration: resolvedDefaultDuration,
         }),
-        [toasts, addToast, removeToast, clearToasts, position, defaultDuration]
+        [toasts, addToast, removeToast, clearToasts, resolvedPosition, resolvedDefaultDuration]
     );
 
     return <ToastContext.Provider value={value}>{children}</ToastContext.Provider>;
