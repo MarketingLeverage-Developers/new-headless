@@ -76,6 +76,28 @@ type ImageUploaderComponent = React.FC<ImageUploaderProps> & {
     Controls: typeof Controls;
 };
 
+const matchAccept = (file: File, accept?: string) => {
+    if (!accept || accept.trim() === '' || accept === '*/*') return true;
+
+    const tokens = accept
+        .split(',')
+        .map((token) => token.trim().toLowerCase())
+        .filter(Boolean);
+
+    const name = (file.name || '').toLowerCase();
+    const type = (file.type || '').toLowerCase();
+
+    return tokens.some((token) => {
+        if (token === '*/*') return true;
+        if (token.startsWith('.')) return name.endsWith(token);
+        if (token.endsWith('/*')) {
+            const prefix = token.slice(0, -2);
+            return type.startsWith(`${prefix}/`);
+        }
+        return type === token;
+    });
+};
+
 const normalize = (arr: ImageItemInput[]): ImageItem[] => {
     const used = new Set<string>();
     return arr.map((it, idx) => {
@@ -139,8 +161,9 @@ const ImageUploader = (({
     const addFiles = async (filesLike: File[] | FileList) => {
         const arr = Array.from<File>(filesLike);
         const valid = arr.filter((f) => {
-            if (!f.type.startsWith('image/')) return false;
             if (maxSize && f.size > maxSize) return false;
+            if (!matchAccept(f, accept)) return false;
+            if (!onResolveFiles && !f.type.startsWith('image/')) return false;
             return true;
         });
         if (valid.length === 0) return;
