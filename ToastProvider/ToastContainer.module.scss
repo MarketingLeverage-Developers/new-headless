@@ -70,6 +70,11 @@
     backface-visibility: hidden;
 }
 
+/* 자동 사라지는 토스트는 하위 UI 상호작용을 막지 않도록 hit-test 제외 */
+.passive {
+    pointer-events: none;
+}
+
 /* 이모지/텍스트/닫기 */
 .icon {
     width: 28px;

@@ -51,6 +51,7 @@ const ToastItem: React.FC<ToastItemProps> = ({ toast, remove, position, defaultD
     const className = cx(
         styles.toast,
         styles.pill,
+        duration > 0 && styles.passive,
         phase === 'entering' && (isTop ? styles.enteringTop : styles.enteringBottom),
         phase === 'visible' && styles.visible,
         phase === 'leaving' && (isTop ? styles.leavingTop : styles.leavingBottom),
