@@ -39,7 +39,7 @@ export type SortState = { key: string; direction: SortDirection } | null;
 export type SortValue = string | number | boolean | Date | null | undefined;
 export type SortValueGetter<T> = (row: T) => SortValue;
 export type Sorter<T> = (a: T, b: T) => number;
-export type FilterState = Record<string, { excluded: string[] }>;
+export type FilterState = Record<string, { included?: string[]; excluded?: string[] }>;
 
 export interface ColumnType<T> {
     key: string;
@@ -270,21 +270,30 @@ export const filterDataByConfig = <T,>(
 ): T[] => {
     if (!filterState) return data;
 
-    const entries = Object.entries(filterState).filter(([, v]) => (v?.excluded?.length ?? 0) > 0);
+    const entries = Object.entries(filterState).filter(
+        ([, v]) => (v?.included?.length ?? 0) > 0 || (v?.excluded?.length ?? 0) > 0
+    );
     if (entries.length === 0) return data;
 
-    const excludedMap = new Map<string, Set<string>>();
+    const filterMap = new Map<string, { included: Set<string>; excluded: Set<string> }>();
     entries.forEach(([key, value]) => {
-        excludedMap.set(String(key), new Set((value?.excluded ?? []).map(String)));
+        filterMap.set(String(key), {
+            included: new Set((value?.included ?? []).map(String)),
+            excluded: new Set((value?.excluded ?? []).map(String)),
+        });
     });
 
     return data.filter((item) => {
-        for (const [colKey, excluded] of excludedMap.entries()) {
+        for (const [colKey, filter] of filterMap.entries()) {
             const config = sortConfigByKey.get(colKey);
             if (!config?.sortValue) continue;
             const raw = config.sortValue(item);
             const key = normalizeFilterKey(raw);
-            if (excluded.has(key)) return false;
+            if (filter.included.size > 0) {
+                if (!filter.included.has(key)) return false;
+                continue;
+            }
+            if (filter.excluded.has(key)) return false;
         }
         return true;
     });
